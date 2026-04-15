@@ -83,3 +83,530 @@ The Admin defines the "DNA" per project.
 ## 🚨 Critical Instruction for Gemini
 
 When generating code for this project, always cross-reference the Admin Schema Factory. Never hardcode property attributes like "Road Width" or "Carpet Area." Always assume these are dynamic keys retrieved from `projects/{projectId}/schema`.
+
+
+## 📜 Gemini Operating Protocol
+
+**One Instruction at a Time:** I will provide only a single command or a single file modification in each response. I must wait for you to share the output or confirm completion before proceeding to the next step.
+
+**Terraform First Mindset:** All infrastructure changes (e.g., creating Cloud Functions, Firestore indexes, or Storage Buckets) must be documented with their CLI commands in `docs/INFRA_MIGRATION_LOG.md`. The ultimate goal is to translate this log into `.tf` files that will live in the `/terraform` directory.
+
+**No Assumptions:** I will not assume a step has been completed. I will ask for verification at each stage.
+
+**Clarity and Precision:** All file paths will be absolute. All code will be production-grade and adhere to the "No Emojis" rule.
+
+
+
+For now we need to focus on just 3 pages in the CRM. These 3 pages are the MVP.
+
+1. Leads
+2. Projects
+3. Admin Console.
+
+
+### Leads (Shows up as a card)
+
+1. We already have /Users/devensuji/Documents/github/CRM/CRM/functions/lead_ingestion_webhook/main.py that has the capability to inject the lead into the database.
+2. The basic details that'll be collected from end users through ADs, Forms and other means are:
+  a. Name
+  b. Email Address
+  c. Phone Number
+  d. Budget
+  e. When are you planning to buy the property?
+  f. Profession.
+3. These details needs to be routed to the proper table in the database by the script /Users/devensuji/Documents/github/CRM/CRM/functions/lead_ingestion_webhook/main.py 
+4. Once these leads shows up in the leads page in the CRM, our sales associates will call the leads and make the necessary correction if needed in the above given files.
+5. The leads page also needs to have the below fields that the sales associate will fill and save. 
+  a. Property Type Interested In: Sales associate needs to be able to make multiple selections here. And this is where the details from the Project page is utilised. 
+  b. Project Interested In: Sales associate needs to be able to make multiple selections here. And this is where the details from the Project page is utilised. If we do not have the project that the lead is interested in, there should be an option to choose by the name Future Allocation.
+  c. Preferred Location: Sales associate needs to be able to make multiple selections here. I want to ensure every name of the location is available here. Also I think sourcing the names from google maps is a good idea here, however I'll leave this decision to you when it comes to sourcing the names of evey possible location.
+  d. Notes section with grammer and spell check.
+  e. Alternate Phone Number.
+  f. Current Address (Optional)
+  g. 
+6. If needed, an admin should be able to add additional fields to the leads page using admin console.
+7. After the first call is made to the lead and the correct details are captured, the lead would have been questioned about which property type and project the lead is interested in and the same would have been selected during the call in the Property Type Interested In and Project Interested In fields. The moment the save button is clicked, the details of the property that the lead is interested in should be nicely formatted as a whatsapp message and be automatically sent to the lead. 
+8. When the lead card is clicked and opened. There should be an option to call the lead through the CRM and this call needs to be recorded and saved for a day. Within a day the AI should be able to summarize the call and append to the summary field. Note that it always needs to appened to ensure we are preserving all the conversation that we've had with the lead.
+
+#### The KANBAN BOARD
+
+1. The lead page needs to be a KANBAN board, with visually stunning swimming lanes.
+
+#### Journey Of The Lead
+1. The moment the leads are injected to the database, Leads should show up vertically stacked on top of each other with the latest one showing on the top in the first swimming lane in the KANBAN board. The name of this swimming lane should be customizable only by the admin.
+2. Everone should be able to sort and filter the leads in every individual swimming lane in the KANBAN board.
+3. Admin should be able to add swimming lanes if needed through admin console.
+4. Though the names of the swimming lanes in the KANBAN board are customizable and an admin will be able to add and remove swimming lanes, let's keep the default swimming lanes as:
+  a. New Leads
+  b. First Call
+  c. Lead Nurturing
+  d. Site Visit
+  e. Booked
+  f. Closed
+  g. Rejected
+5. Everyone should be able to drag and drop the leads card to any swimming lanes.
+6. When the cursor is hovered over any lead, a ballon needs to pop up where one can scroll over the ballon and read all the fields of the lead.
+7. After the call when a Site visit is scheduled for the lead, an immediate notfication should be sent to lead. One more notication needs to be sent 1 day prior and another one the very morning of the site visit day.
+
+
+### Projects
+
+Projects is the page where we keep the property related details systematically.
+Each Project should show up as a big tile as shown in the screenshot /Users/devensuji/Documents/github/CRM/docs/Pictures/ExampleOfProjectsArrengedLikeATile.png.
+One should be able to search project using the search bar.
+It should also have a filter that uses different fileds.
+
+Some of the default attributes of each property type are given below and rest when needed an admin should be able to define it from the admin console.
+
+1. Plotted Land
+    Facing
+    Dimension
+    Plot Number [Admin should be able to add default values that shows up in the dropdown]
+    Asphalt or Cemented roads? [Admin should be able to add default values that shows up in the dropdown]
+    Road Width [Admin should be able to add default values that shows up in the dropdown]
+    Corner Plot (Yes/No)
+    Drainage system
+    Electricity connection
+    Source of water (Borewell vs Cauvery water) [Admin should be able to add default values that shows up in the dropdown]
+    Sewage system
+    RERA Approved (Yes/No)
+    Khata Type
+        MUDA Approved (Yes/No)
+        MUDA Allotted (Yes/No)
+        Panchayat (DTCP)
+        Panchayat (11 B)
+
+
+
+2. Apartment
+    Unit Number
+    Floor Number 
+    Carpet Area
+    Built Area
+    Super Built Up Area 
+    Facing
+    Dimension 
+    Source of water [Admin should be able to add default values that shows up in the dropdown]
+    Power backup (full or partial)
+    Sewage treatment plant (STP)
+    Rainwater harvesting
+    Amenities [Admin should be able to add default values that shows up in the dropdown]
+    Security (Yes/No)
+    CCTV (Yes/No) 
+    Gated Community (Yes/No)
+    Maintenance deposit [Admin should be able to add default values that shows up in the dropdown]
+    Parking Type [Admin should be able to add default values that shows up in the dropdown]
+    Lift Availbility (Yes/No)
+    Visitor parking availability
+
+3. Villa
+    Unit Number
+    Carpet Area
+    Built Area
+    Facing
+    Dimension
+    Source of water (Borewell vs Cauvery water)
+    Power Backup
+    Sewage treatment plant (STP)
+    Rainwater harvesting
+    Amenities [Admin should be able to add default values that shows up in the dropdown]
+    Security (Yes/No)
+    CCTV (Yes/No) 
+    Gated Community (Yes/No)
+    Maintenance deposit [Admin should be able to add default values that shows up in the dropdown]
+    Parking Type [Admin should be able to add default values that shows up in the dropdown]
+    Visitor parking availability
+
+### Features:
+1. WhatsApp Integration
+2. Leads and Property matching assisted by AI.
+3. Admin Console where any fields in the Leads and 
+
+
+Document Vault (The Trust Builder): Not Needed for now. But in future we'll add it.
+
+Associate Performance Leaderboard: A simple visual in the Admin Console showing which associate has the highest "Site Visit to Booking" ratio. Yes this is needed.
+
+For now we need to focus on just 3 pages in the CRM. These 3 pages are the MVP.
+
+1. Leads
+2. Projects
+3. Admin Console.
+
+
+### Leads (Shows up as a card)
+
+1. We already have /Users/devensuji/Documents/github/CRM/CRM/functions/lead_ingestion_webhook/main.py that has the capability to inject the lead into the database.
+2. The basic details that'll be collected from end users through ADs, Forms and other means are:
+  a. Name
+  b. Email Address
+  c. Phone Number
+  d. Budget
+  e. When are you planning to buy the property?
+  f. Profession.
+3. These details needs to be routed to the proper table in the database by the script /Users/devensuji/Documents/github/CRM/CRM/functions/lead_ingestion_webhook/main.py 
+4. Once these leads shows up in the leads page in the CRM, our sales associates will call the leads and make the necessary correction if needed in the above given files.
+5. The leads page also needs to have the below fields that the sales associate will fill and save. 
+  a. Property Type Interested In: Sales associate needs to be able to make multiple selections here. And this is where the details from the Project page is utilised. 
+  b. Project Interested In: Sales associate needs to be able to make multiple selections here. And this is where the details from the Project page is utilised. If we do not have the project that the lead is interested in, there should be an option to choose by the name Future Allocation.
+  c. Preferred Location: Sales associate needs to be able to make multiple selections here. I want to ensure every name of the location is available here. Also I think sourcing the names from google maps is a good idea here, however I'll leave this decision to you when it comes to sourcing the names of evey possible location.
+  d. Notes section with grammer and spell check.
+  e. Alternate Phone Number.
+  f. Current Address (Optional)
+  g. 
+6. If needed, an admin should be able to add additional fields to the leads page using admin console.
+7. After the first call is made to the lead and the correct details are captured, the lead would have been questioned about which property type and project the lead is interested in and the same would have been selected during the call in the Property Type Interested In and Project Interested In fields. The moment the save button is clicked, the details of the property that the lead is interested in should be nicely formatted as a whatsapp message and be automatically sent to the lead. 
+8. When the lead card is clicked and opened. There should be an option to call the lead through the CRM and this call needs to be recorded and saved for a day. Within a day the AI should be able to summarize the call and append to the summary field. Note that it always needs to appened to ensure we are preserving all the conversation that we've had with the lead.
+
+#### The KANBAN BOARD
+
+1. The lead page needs to be a KANBAN board, with visually stunning swimming lanes.
+
+#### Journey Of The Lead
+1. The moment the leads are injected to the database, Leads should show up vertically stacked on top of each other with the latest one showing on the top in the first swimming lane in the KANBAN board. The name of this swimming lane should be customizable only by the admin.
+2. Everone should be able to sort and filter the leads in every individual swimming lane in the KANBAN board.
+3. Admin should be able to add swimming lanes if needed through admin console.
+4. Though the names of the swimming lanes in the KANBAN board are customizable and an admin will be able to add and remove swimming lanes, let's keep the default swimming lanes as:
+  a. New Leads
+  b. First Call
+  c. Lead Nurturing
+  d. Site Visit
+  e. Booked
+  f. Closed
+  g. Rejected
+5. Everyone should be able to drag and drop the leads card to any swimming lanes.
+6. When the cursor is hovered over any lead, a ballon needs to pop up where one can scroll over the ballon and read all the fields of the lead.
+7. After the call when a Site visit is scheduled for the lead, an immediate notfication should be sent to lead. One more notication needs to be sent 1 day prior and another one the very morning of the site visit day.
+
+
+### Projects
+
+Projects is the page where we keep the property related details systematically.
+Each Project should show up as a big tile as shown in the screenshot /Users/devensuji/Documents/github/CRM/docs/Pictures/ExampleOfProjectsArrengedLikeATile.png.
+One should be able to search project using the search bar.
+It should also have a filter that uses different fileds.
+
+Some of the default attributes of each property type are given below and rest when needed an admin should be able to define it from the admin console.
+
+1. Plotted Land
+    Facing
+    Dimension
+    Plot Number [Admin should be able to add default values that shows up in the dropdown]
+    Asphalt or Cemented roads? [Admin should be able to add default values that shows up in the dropdown]
+    Road Width [Admin should be able to add default values that shows up in the dropdown]
+    Corner Plot (Yes/No)
+    Drainage system
+    Electricity connection
+    Source of water (Borewell vs Cauvery water) [Admin should be able to add default values that shows up in the dropdown]
+    Sewage system
+    RERA Approved (Yes/No)
+    Khata Type
+        MUDA Approved (Yes/No)
+        MUDA Allotted (Yes/No)
+        Panchayat (DTCP)
+        Panchayat (11 B)
+
+
+
+2. Apartment
+    Unit Number
+    Floor Number 
+    Carpet Area
+    Built Area
+    Super Built Up Area 
+    Facing
+    Dimension 
+    Source of water [Admin should be able to add default values that shows up in the dropdown]
+    Power backup (full or partial)
+    Sewage treatment plant (STP)
+    Rainwater harvesting
+    Amenities [Admin should be able to add default values that shows up in the dropdown]
+    Security (Yes/No)
+    CCTV (Yes/No) 
+    Gated Community (Yes/No)
+    Maintenance deposit [Admin should be able to add default values that shows up in the dropdown]
+    Parking Type [Admin should be able to add default values that shows up in the dropdown]
+    Lift Availbility (Yes/No)
+    Visitor parking availability
+
+3. Villa
+    Unit Number
+    Carpet Area
+    Built Area
+    Facing
+    Dimension
+    Source of water (Borewell vs Cauvery water)
+    Power Backup
+    Sewage treatment plant (STP)
+    Rainwater harvesting
+    Amenities [Admin should be able to add default values that shows up in the dropdown]
+    Security (Yes/No)
+    CCTV (Yes/No) 
+    Gated Community (Yes/No)
+    Maintenance deposit [Admin should be able to add default values that shows up in the dropdown]
+    Parking Type [Admin should be able to add default values that shows up in the dropdown]
+    Visitor parking availability
+
+### Features:
+1. WhatsApp Integration
+2. Leads and Property matching assisted by AI.
+3. Admin Console where any fields in the Leads and 
+
+
+Document Vault (The Trust Builder): Not Needed for now. But in future we'll add it.
+
+Associate Performance Leaderboard: A simple visual in the Admin Console showing which associate has the highest "Site Visit to Booking" ratio. Yes this is needed.
+
+For now we need to focus on just 3 pages in the CRM. These 3 pages are the MVP.
+
+1. Leads
+2. Projects
+3. Admin Console.
+
+
+### Leads (Shows up as a card)
+
+1. We already have /Users/devensuji/Documents/github/CRM/CRM/functions/lead_ingestion_webhook/main.py that has the capability to inject the lead into the database.
+2. The basic details that'll be collected from end users through ADs, Forms and other means are:
+  a. Name
+  b. Email Address
+  c. Phone Number
+  d. Budget
+  e. When are you planning to buy the property?
+  f. Profession.
+3. These details needs to be routed to the proper table in the database by the script /Users/devensuji/Documents/github/CRM/CRM/functions/lead_ingestion_webhook/main.py 
+4. Once these leads shows up in the leads page in the CRM, our sales associates will call the leads and make the necessary correction if needed in the above given files.
+5. The leads page also needs to have the below fields that the sales associate will fill and save. 
+  a. Property Type Interested In: Sales associate needs to be able to make multiple selections here. And this is where the details from the Project page is utilised. 
+  b. Project Interested In: Sales associate needs to be able to make multiple selections here. And this is where the details from the Project page is utilised. If we do not have the project that the lead is interested in, there should be an option to choose by the name Future Allocation.
+  c. Preferred Location: Sales associate needs to be able to make multiple selections here. I want to ensure every name of the location is available here. Also I think sourcing the names from google maps is a good idea here, however I'll leave this decision to you when it comes to sourcing the names of evey possible location.
+  d. Notes section with grammer and spell check.
+  e. Alternate Phone Number.
+  f. Current Address (Optional)
+  g. 
+6. If needed, an admin should be able to add additional fields to the leads page using admin console.
+7. After the first call is made to the lead and the correct details are captured, the lead would have been questioned about which property type and project the lead is interested in and the same would have been selected during the call in the Property Type Interested In and Project Interested In fields. The moment the save button is clicked, the details of the property that the lead is interested in should be nicely formatted as a whatsapp message and be automatically sent to the lead. 
+8. When the lead card is clicked and opened. There should be an option to call the lead through the CRM and this call needs to be recorded and saved for a day. Within a day the AI should be able to summarize the call and append to the summary field. Note that it always needs to appened to ensure we are preserving all the conversation that we've had with the lead.
+
+#### The KANBAN BOARD
+
+1. The lead page needs to be a KANBAN board, with visually stunning swimming lanes.
+
+#### Journey Of The Lead
+1. The moment the leads are injected to the database, Leads should show up vertically stacked on top of each other with the latest one showing on the top in the first swimming lane in the KANBAN board. The name of this swimming lane should be customizable only by the admin.
+2. Everone should be able to sort and filter the leads in every individual swimming lane in the KANBAN board.
+3. Admin should be able to add swimming lanes if needed through admin console.
+4. Though the names of the swimming lanes in the KANBAN board are customizable and an admin will be able to add and remove swimming lanes, let's keep the default swimming lanes as:
+  a. New Leads
+  b. First Call
+  c. Lead Nurturing
+  d. Site Visit
+  e. Booked
+  f. Closed
+  g. Rejected
+5. Everyone should be able to drag and drop the leads card to any swimming lanes.
+6. When the cursor is hovered over any lead, a ballon needs to pop up where one can scroll over the ballon and read all the fields of the lead.
+7. After the call when a Site visit is scheduled for the lead, an immediate notfication should be sent to lead. One more notication needs to be sent 1 day prior and another one the very morning of the site visit day.
+
+
+### Projects
+
+Projects is the page where we keep the property related details systematically.
+Each Project should show up as a big tile as shown in the screenshot /Users/devensuji/Documents/github/CRM/docs/Pictures/ExampleOfProjectsArrengedLikeATile.png.
+One should be able to search project using the search bar.
+It should also have a filter that uses different fileds.
+
+Some of the default attributes of each property type are given below and rest when needed an admin should be able to define it from the admin console.
+
+1. Plotted Land
+    Facing
+    Dimension
+    Plot Number [Admin should be able to add default values that shows up in the dropdown]
+    Asphalt or Cemented roads? [Admin should be able to add default values that shows up in the dropdown]
+    Road Width [Admin should be able to add default values that shows up in the dropdown]
+    Corner Plot (Yes/No)
+    Drainage system
+    Electricity connection
+    Source of water (Borewell vs Cauvery water) [Admin should be able to add default values that shows up in the dropdown]
+    Sewage system
+    RERA Approved (Yes/No)
+    Khata Type
+        MUDA Approved (Yes/No)
+        MUDA Allotted (Yes/No)
+        Panchayat (DTCP)
+        Panchayat (11 B)
+
+
+
+2. Apartment
+    Unit Number
+    Floor Number 
+    Carpet Area
+    Built Area
+    Super Built Up Area 
+    Facing
+    Dimension 
+    Source of water [Admin should be able to add default values that shows up in the dropdown]
+    Power backup (full or partial)
+    Sewage treatment plant (STP)
+    Rainwater harvesting
+    Amenities [Admin should be able to add default values that shows up in the dropdown]
+    Security (Yes/No)
+    CCTV (Yes/No) 
+    Gated Community (Yes/No)
+    Maintenance deposit [Admin should be able to add default values that shows up in the dropdown]
+    Parking Type [Admin should be able to add default values that shows up in the dropdown]
+    Lift Availbility (Yes/No)
+    Visitor parking availability
+
+3. Villa
+    Unit Number
+    Carpet Area
+    Built Area
+    Facing
+    Dimension
+    Source of water (Borewell vs Cauvery water)
+    Power Backup
+    Sewage treatment plant (STP)
+    Rainwater harvesting
+    Amenities [Admin should be able to add default values that shows up in the dropdown]
+    Security (Yes/No)
+    CCTV (Yes/No) 
+    Gated Community (Yes/No)
+    Maintenance deposit [Admin should be able to add default values that shows up in the dropdown]
+    Parking Type [Admin should be able to add default values that shows up in the dropdown]
+    Visitor parking availability
+
+### Features:
+1. WhatsApp Integration
+2. Leads and Property matching assisted by AI.
+3. Admin Console where any fields in the Leads and 
+
+
+Document Vault (The Trust Builder): Not Needed for now. But in future we'll add it.
+
+Associate Performance Leaderboard: A simple visual in the Admin Console showing which associate has the highest "Site Visit to Booking" ratio. Yes this is needed.
+
+For now we need to focus on just 3 pages in the CRM. These 3 pages are the MVP.
+
+1. Leads
+2. Projects
+3. Admin Console.
+
+
+### Leads (Shows up as a card)
+
+1. We already have /Users/devensuji/Documents/github/CRM/CRM/functions/lead_ingestion_webhook/main.py that has the capability to inject the lead into the database.
+2. The basic details that'll be collected from end users through ADs, Forms and other means are:
+  a. Name
+  b. Email Address
+  c. Phone Number
+  d. Budget
+  e. When are you planning to buy the property?
+  f. Profession.
+3. These details needs to be routed to the proper table in the database by the script /Users/devensuji/Documents/github/CRM/CRM/functions/lead_ingestion_webhook/main.py 
+4. Once these leads shows up in the leads page in the CRM, our sales associates will call the leads and make the necessary correction if needed in the above given files.
+5. The leads page also needs to have the below fields that the sales associate will fill and save. 
+  a. Property Type Interested In: Sales associate needs to be able to make multiple selections here. And this is where the details from the Project page is utilised. 
+  b. Project Interested In: Sales associate needs to be able to make multiple selections here. And this is where the details from the Project page is utilised. If we do not have the project that the lead is interested in, there should be an option to choose by the name Future Allocation.
+  c. Preferred Location: Sales associate needs to be able to make multiple selections here. I want to ensure every name of the location is available here. Also I think sourcing the names from google maps is a good idea here, however I'll leave this decision to you when it comes to sourcing the names of evey possible location.
+  d. Notes section with grammer and spell check.
+  e. Alternate Phone Number.
+  f. Current Address (Optional)
+  g. 
+6. If needed, an admin should be able to add additional fields to the leads page using admin console.
+7. After the first call is made to the lead and the correct details are captured, the lead would have been questioned about which property type and project the lead is interested in and the same would have been selected during the call in the Property Type Interested In and Project Interested In fields. The moment the save button is clicked, the details of the property that the lead is interested in should be nicely formatted as a whatsapp message and be automatically sent to the lead. 
+8. When the lead card is clicked and opened. There should be an option to call the lead through the CRM and this call needs to be recorded and saved for a day. Within a day the AI should be able to summarize the call and append to the summary field. Note that it always needs to appened to ensure we are preserving all the conversation that we've had with the lead.
+
+#### The KANBAN BOARD
+
+1. The lead page needs to be a KANBAN board, with visually stunning swimming lanes.
+
+#### Journey Of The Lead
+1. The moment the leads are injected to the database, Leads should show up vertically stacked on top of each other with the latest one showing on the top in the first swimming lane in the KANBAN board. The name of this swimming lane should be customizable only by the admin.
+2. Everone should be able to sort and filter the leads in every individual swimming lane in the KANBAN board.
+3. Admin should be able to add swimming lanes if needed through admin console.
+4. Though the names of the swimming lanes in the KANBAN board are customizable and an admin will be able to add and remove swimming lanes, let's keep the default swimming lanes as:
+  a. New Leads
+  b. First Call
+  c. Lead Nurturing
+  d. Site Visit
+  e. Booked
+  f. Closed
+  g. Rejected
+5. Everyone should be able to drag and drop the leads card to any swimming lanes.
+6. When the cursor is hovered over any lead, a ballon needs to pop up where one can scroll over the ballon and read all the fields of the lead.
+
+
+### Projects
+
+Projects is the page where we keep the property related details systematically.
+Each Project should show up as a big tile as shown in the screenshot /Users/devensuji/Documents/github/CRM/docs/Pictures/ExampleOfProjectsArrengedLikeATile.png.
+One should be able to search project using the search bar.
+It should also have a filter that uses different fileds.
+
+Some of the default attributes of each property type are given below and rest when needed an admin should be able to define it from the admin console.
+
+1. Plotted Land
+    Facing
+    Dimension
+    Plot Number [Admin should be able to add default values that shows up in the dropdown]
+    Asphalt or Cemented roads? [Admin should be able to add default values that shows up in the dropdown]
+    Road Width [Admin should be able to add default values that shows up in the dropdown]
+    Corner Plot (Yes/No)
+    Drainage system
+    Electricity connection
+    Source of water (Borewell vs Cauvery water) [Admin should be able to add default values that shows up in the dropdown]
+    Sewage system
+    RERA Approved (Yes/No)
+    Khata Type
+        MUDA Approved (Yes/No)
+        MUDA Allotted (Yes/No)
+        Panchayat (DTCP)
+        Panchayat (11 B)
+
+
+
+2. Apartment
+    Unit Number
+    Floor Number 
+    Carpet Area
+    Built Area
+    Super Built Up Area 
+    Facing
+    Dimension 
+    Source of water [Admin should be able to add default values that shows up in the dropdown]
+    Power backup (full or partial)
+    Sewage treatment plant (STP)
+    Rainwater harvesting
+    Amenities [Admin should be able to add default values that shows up in the dropdown]
+    Security (Yes/No)
+    CCTV (Yes/No) 
+    Gated Community (Yes/No)
+    Maintenance deposit [Admin should be able to add default values that shows up in the dropdown]
+    Parking Type [Admin should be able to add default values that shows up in the dropdown]
+    Lift Availbility (Yes/No)
+    Visitor parking availability
+
+3. Villa
+    Unit Number
+    Carpet Area
+    Built Area
+    Facing
+    Dimension
+    Source of water (Borewell vs Cauvery water)
+    Power Backup
+    Sewage treatment plant (STP)
+    Rainwater harvesting
+    Amenities [Admin should be able to add default values that shows up in the dropdown]
+    Security (Yes/No)
+    CCTV (Yes/No) 
+    Gated Community (Yes/No)
+    Maintenance deposit [Admin should be able to add default values that shows up in the dropdown]
+    Parking Type [Admin should be able to add default values that shows up in the dropdown]
+    Visitor parking availability
+
+### Features:
+1. WhatsApp Integration
+2. Leads and Property matching assisted by AI.
+3. Admin Console where any fields in the Leads and 

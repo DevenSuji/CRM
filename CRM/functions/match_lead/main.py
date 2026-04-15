@@ -6,7 +6,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 import json
 
 # Initialize AI Engine with the NEW stable model
-vertexai.init(project="elitebuild-crm", location="asia-south1")
+vertexai.init(project="elite-build-crm", location="asia-south1")
 model = GenerativeModel("gemini-2.5-flash")
 
 @functions_framework.cloud_event

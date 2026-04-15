@@ -37,9 +37,9 @@ Firestore: Provisioned in Native Mode within asia-south1.
 
 Storage Buckets: Created two high-performance buckets:
 
-gs://elitebuild-assets (Public brochures/maps)
+gs://elitebuild-crm-assets (Public brochures/maps)
 
-gs://elitebuild-recordings (Private call audio)
+gs://elitebuild-crm-recordings (Private call audio)
 
 ⚡ Phase 2: The "Lead Magnet" (Automation)
 Goal: Create a real-time bridge between Meta Ads and the internal database.
