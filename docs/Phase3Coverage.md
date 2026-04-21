@@ -69,3 +69,45 @@ Each session adds one section. The rule is: if a gap isn't recorded here, it's n
 
 Before this session: 0% coverage on dashboard math — a silent bug in revenue/pipeline calc would reach a leadership view with no signal.
 After: every chart's number has at least one pin, and the non-obvious behaviors (audited-only LQS denominator, SV+ funnel definition, call-bucket attribution, Rejected exclusion from SV ratio) are locked.
+
+---
+
+## Session 2 (2026-04-21): Admin console — team management guardrails
+
+**Why this surface is load-bearing:** the Firestore rules today allow a user to self-promote via their own `users/{uid}` doc (see [docs/TechDebtAndSecurityPosture.md](./TechDebtAndSecurityPosture.md) §5.6 — "lock down users self-update"). Until that rule is tightened in Phase 5, the UI guardrails in the admin Team tab are effectively the security boundary for role changes. A regression in any of these predicates would be a privilege escalation.
+
+### What was extracted
+
+`lib/auth/teamGuards.ts` (new) — three predicates + two sort helpers pulled out of the inline logic in `app/admin/page.tsx`. All return a `{ allowed: boolean; reason?: string }` shape so the toast message stays in sync with the guard decision:
+
+- `canChangeRole(actor, target, newRole)` — blocks self-edit, missing `manage_users` capability, and non-superadmin touching a superadmin role either side.
+- `canToggleActive(actor, target)` — blocks self-toggle (anti-lockout) and missing `manage_users`.
+- `canRemoveMember(actor, target)` — blocks self-delete, missing `manage_users`, and non-superadmin removing a superadmin.
+- `assignableRoles(actor, options)` — filters the role dropdown by `superadminOnly` flag.
+- `rankTeamMemberRole` / `compareTeamMembers` — stable sort for the team list (role tier, then name).
+
+`TeamTab` was refactored to call these instead of the inline guards. UI behavior and toast copy are byte-identical; the tests over the extracted functions are the only new runtime surface.
+
+### Test file
+
+[`tests/unit/teamGuards.test.ts`](../CRM/elite-build-dashboard/tests/unit/teamGuards.test.ts) — 23 tests covering every deny-path and allow-path plus the sort.
+
+### What's covered
+
+- Every `canChangeRole` case: null actor → denied; non-superadmin actor → denied; self-edit → denied; superadmin changing non-superadmin → allowed; superadmin promoting to superadmin → allowed; superadmin demoting another superadmin → allowed; non-superadmin trying to promote to superadmin → denied (capability check fires first).
+- `canToggleActive`: self-toggle blocked; non-superadmin blocked; superadmin→non-superadmin allowed; superadmin→superadmin allowed (pinning current permissive behavior — no explicit rule yet).
+- `canRemoveMember`: self-delete blocked; non-superadmin blocked; superadmin→non-superadmin allowed; superadmin→superadmin allowed; defense-in-depth test pins that a non-superadmin never removes a superadmin even if `manage_users` is ever granted to admin.
+- `assignableRoles`: superadmin-only options filtered out for non-superadmin; null actor treated as non-privileged.
+- `rankTeamMemberRole`: every role has a strictly-increasing rank; unknown roles bucket to 99.
+- `compareTeamMembers`: role-tier primary, name secondary; tolerates empty names without crashing.
+
+### Deliberately skipped
+
+- **Rules-level enforcement of these guards.** Today the Firestore rules don't enforce them (by design deferral — see §5.6). Adding rules tests for invariants the rules don't enforce would produce false-green results. Phase 5 will harden the rules and then a matching rules test set becomes appropriate.
+- **`handleAddMember` (pending-user pre-registration).** Already exercised end-to-end by the `resolveCrmUser` rules tests from Phase 2, which cover the migration of `pending_<email>` → `users/<uid>` on first sign-in.
+
+### Known gaps surfaced during coverage (not blocking)
+
+1. **CI is currently red** — `npm run lint` in `.github/workflows/tests.yml` has ~61 preexisting errors from before this session (mostly `any` escape hatches in CSV import paths and unused imports). The lint step has never passed since the initial commit. Option: either relax the rule set to match today's reality and ratchet it down, or fix the top offenders in a dedicated Phase 4 cleanup. Flagged so this doesn't silently become "CI has always been red, ignore it."
+2. **Firestore rules gap §5.6 (self-promotion).** Now doubly-documented — by Phase 5 plan and by the inline header comment in `teamGuards.ts`. A rules fix here would let us delete most of these UI guards (or keep them as UX-nice error messages) and move the tests from unit to rules.
+

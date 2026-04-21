@@ -14,6 +14,13 @@ import { useToast } from '@/lib/hooks/useToast';
 import { useAuth } from '@/lib/context/AuthContext';
 import { CRMUser, UserRole } from '@/lib/types/user';
 import { can, ROLE_LABELS } from '@/lib/utils/permissions';
+import {
+  canChangeRole as guardCanChangeRole,
+  canToggleActive as guardCanToggleActive,
+  canRemoveMember as guardCanRemoveMember,
+  assignableRoles as guardAssignableRoles,
+  compareTeamMembers,
+} from '@/lib/auth/teamGuards';
 import { DEFAULT_LEAD_CARD_COLORS } from '@/lib/types/config';
 import { contrastingTextColor } from '@/lib/utils/colorUtils';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -575,15 +582,13 @@ function TeamTab() {
   const [newRole, setNewRole] = useState<UserRole>('sales_exec');
   const [adding, setAdding] = useState(false);
 
-  const isSuperAdmin = crmUser?.role === 'superadmin';
   // Only SuperAdmin can manage users (create / delete / change roles).
   const canManage = can(crmUser?.role, 'manage_users');
-  // Only SuperAdmin can promote someone else to SuperAdmin.
+  // Only SuperAdmin can promote someone else to SuperAdmin. Used below to
+  // disable the role dropdown when the current row is a superadmin.
   const canPromoteSuperAdmin = can(crmUser?.role, 'promote_to_superadmin');
   // Role options filtered by what the current user is allowed to assign.
-  const assignableRoles = ROLE_OPTIONS.filter(
-    r => !r.superadminOnly || canPromoteSuperAdmin,
-  );
+  const assignableRoles = guardAssignableRoles(crmUser, ROLE_OPTIONS);
 
   // Load team members
   useEffect(() => {
@@ -592,17 +597,7 @@ function TeamTab() {
       try {
         const snap = await getDocs(collection(db, 'users'));
         const members = snap.docs.map(d => ({ uid: d.id, ...d.data() } as CRMUser));
-        // Sort: higher-privilege roles first, then by name.
-        const rank = (r: UserRole): number => {
-          const order: UserRole[] = ['superadmin', 'admin', 'sales_exec', 'digital_marketing', 'channel_partner', 'hr', 'payroll_finance', 'viewer'];
-          const idx = order.indexOf(r);
-          return idx === -1 ? 99 : idx;
-        };
-        members.sort((a, b) => {
-          const dr = rank(a.role) - rank(b.role);
-          if (dr !== 0) return dr;
-          return (a.name || '').localeCompare(b.name || '');
-        });
+        members.sort(compareTeamMembers);
         setTeamMembers(members);
       } catch (err) {
         console.error(err);
@@ -656,14 +651,9 @@ function TeamTab() {
   };
 
   const handleRoleChange = async (member: CRMUser, newRole: UserRole) => {
-    // Prevent changing own role
-    if (member.uid === crmUser?.uid) {
-      showToast('error', 'You cannot change your own role.');
-      return;
-    }
-    // Only SuperAdmin can promote to / demote from superadmin.
-    if ((newRole === 'superadmin' || member.role === 'superadmin') && !canPromoteSuperAdmin) {
-      showToast('error', 'Only a Super Admin can change Super Admin roles.');
+    const check = guardCanChangeRole(crmUser, member, newRole);
+    if (!check.allowed) {
+      showToast('error', check.reason!);
       return;
     }
     try {
@@ -677,8 +667,9 @@ function TeamTab() {
   };
 
   const handleToggleActive = async (member: CRMUser) => {
-    if (member.uid === crmUser?.uid) {
-      showToast('error', 'You cannot deactivate yourself.');
+    const check = guardCanToggleActive(crmUser, member);
+    if (!check.allowed) {
+      showToast('error', check.reason!);
       return;
     }
     try {
@@ -693,12 +684,9 @@ function TeamTab() {
   };
 
   const handleRemoveMember = async (member: CRMUser) => {
-    if (member.uid === crmUser?.uid) {
-      showToast('error', 'You cannot remove yourself.');
-      return;
-    }
-    if (member.role === 'superadmin' && !canPromoteSuperAdmin) {
-      showToast('error', 'Only a Super Admin can remove a Super Admin.');
+    const check = guardCanRemoveMember(crmUser, member);
+    if (!check.allowed) {
+      showToast('error', check.reason!);
       return;
     }
     try {
