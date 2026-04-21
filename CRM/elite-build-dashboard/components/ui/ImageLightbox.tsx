@@ -13,7 +13,11 @@ interface ImageLightboxProps {
 export function ImageLightbox({ images, initialIndex = 0, open, onClose }: ImageLightboxProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
+  // Reset to initialIndex on open transition. This is the textbook
+  // derive-state-on-prop-change pattern; the Compiler prefers a `key`
+  // reset at the caller but that ripples to every consumer.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open) setCurrentIndex(initialIndex);
   }, [open, initialIndex]);
 

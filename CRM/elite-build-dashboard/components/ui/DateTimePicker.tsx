@@ -27,15 +27,26 @@ export function DateTimePicker({ label, value, onChange, min, required, classNam
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const now = new Date();
-  const parsed = value ? new Date(value) : null;
-  const minDate = min ? new Date(min) : null;
+  // Parse value on every render — derived, not state. Prevents the prop/state
+  // desync that the previous useEffect was papering over.
+  const parsed = useMemo(() => {
+    if (!value) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  }, [value]);
 
-  const [viewYear, setViewYear] = useState(parsed?.getFullYear() || now.getFullYear());
-  const [viewMonth, setViewMonth] = useState(parsed?.getMonth() ?? now.getMonth());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(parsed);
-  const [hours, setHours] = useState(parsed ? String(parsed.getHours()).padStart(2, '0') : '10');
-  const [minutes, setMinutes] = useState(parsed ? String(parsed.getMinutes()).padStart(2, '0') : '00');
+  const minDate = useMemo(() => (min ? new Date(min) : null), [min]);
+
+  // The calendar's month view is user-controlled — seed from value, but once
+  // the user pages forward/back we don't want prop changes to reset them.
+  const [viewYear, setViewYear] = useState(() => parsed?.getFullYear() || new Date().getFullYear());
+  const [viewMonth, setViewMonth] = useState(() => parsed?.getMonth() ?? new Date().getMonth());
+
+  // Selected date + time tracks the value prop. Derived state reads value on
+  // every render; the previous useEffect approach caused a one-render flash.
+  const selectedDate = parsed;
+  const hours = parsed ? String(parsed.getHours()).padStart(2, '0') : '10';
+  const minutes = parsed ? String(parsed.getMinutes()).padStart(2, '0') : '00';
 
   // Close on outside click
   useEffect(() => {
@@ -48,20 +59,6 @@ export function DateTimePicker({ label, value, onChange, min, required, classNam
     document.addEventListener('mousedown', handle);
     return () => document.removeEventListener('mousedown', handle);
   }, [open]);
-
-  // Sync state when value prop changes
-  useEffect(() => {
-    if (value) {
-      const d = new Date(value);
-      if (!isNaN(d.getTime())) {
-        setSelectedDate(d);
-        setHours(String(d.getHours()).padStart(2, '0'));
-        setMinutes(String(d.getMinutes()).padStart(2, '0'));
-        setViewYear(d.getFullYear());
-        setViewMonth(d.getMonth());
-      }
-    }
-  }, [value]);
 
   const days = useMemo(() => {
     const daysInMonth = getDaysInMonth(viewYear, viewMonth);
@@ -79,8 +76,11 @@ export function DateTimePicker({ label, value, onChange, min, required, classNam
   }, [minDate, viewYear, viewMonth]);
 
   const isToday = useCallback((day: number) => {
-    return viewYear === now.getFullYear() && viewMonth === now.getMonth() && day === now.getDate();
-  }, [viewYear, viewMonth, now]);
+    // `new Date()` inside the callback — not a dep. Using `now` from render
+    // scope made this callback invalidate every render.
+    const today = new Date();
+    return viewYear === today.getFullYear() && viewMonth === today.getMonth() && day === today.getDate();
+  }, [viewYear, viewMonth]);
 
   const isSelected = useCallback((day: number) => {
     if (!selectedDate) return false;
@@ -89,19 +89,16 @@ export function DateTimePicker({ label, value, onChange, min, required, classNam
 
   const handleSelectDay = (day: number) => {
     const d = new Date(viewYear, viewMonth, day, parseInt(hours), parseInt(minutes));
-    setSelectedDate(d);
     emitValue(d);
   };
 
   const handleTimeChange = (h: string, m: string) => {
-    setHours(h);
-    setMinutes(m);
-    if (selectedDate) {
-      const d = new Date(selectedDate);
-      d.setHours(parseInt(h), parseInt(m));
-      setSelectedDate(d);
-      emitValue(d);
-    }
+    // Time picker needs a selected day to anchor. If user picks a time first,
+    // anchor to today.
+    const base = selectedDate ?? new Date(viewYear, viewMonth, new Date().getDate());
+    const d = new Date(base);
+    d.setHours(parseInt(h), parseInt(m));
+    emitValue(d);
   };
 
   const emitValue = (d: Date) => {

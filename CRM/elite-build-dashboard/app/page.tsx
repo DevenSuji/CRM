@@ -50,7 +50,7 @@ export default function LeadsPage() {
       return [where('owner_uid', '==', crmUser.uid), orderBy('created_at', 'desc')];
     }
     return [orderBy('created_at', 'desc')];
-  }, [ownLeadsOnly, crmUser?.uid]);
+  }, [ownLeadsOnly, crmUser]);
   const { data: leads, loading: leadsLoading } = useFirestoreCollectionKeyed<Lead>(
     'leads',
     leadsKey,

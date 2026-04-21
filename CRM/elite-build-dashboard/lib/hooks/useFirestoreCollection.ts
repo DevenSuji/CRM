@@ -30,7 +30,12 @@ export function useFirestoreCollectionKeyed<T extends { id: string }>(
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  // Latest-ref pattern: we deliberately want the effect to re-subscribe only
+  // when `subscriptionKey` changes, but to read the *current* constraints when
+  // that happens. Writing the ref during render is the standard pattern for
+  // this (React docs: "Avoiding effects — Reading the latest props").
   const constraintsRef = useRef(constraints);
+  // eslint-disable-next-line react-hooks/refs
   constraintsRef.current = constraints;
 
   useEffect(() => {

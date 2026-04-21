@@ -81,7 +81,7 @@ function TeamView({ currentUid }: { currentUid?: string }) {
   const leads = useMemo(() => {
     if (!ownLeadsOnly || !crmUser?.uid) return allLeads;
     return allLeads.filter(l => l.owner_uid === crmUser.uid);
-  }, [allLeads, ownLeadsOnly, crmUser?.uid]);
+  }, [allLeads, ownLeadsOnly, crmUser]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">

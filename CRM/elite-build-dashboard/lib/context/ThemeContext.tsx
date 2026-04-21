@@ -83,12 +83,15 @@ function applyPalette(colorId: ThemeColorId) {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [activeColor, setActiveColor] = useState<ThemeColorId>('light');
-  const [mounted, setMounted] = useState(false);
 
+  // Standard hydration-from-localStorage pattern. Running on mount to read
+  // the persisted theme and sync React state requires setState in the effect
+  // body — that's the point. Alternatives (useSyncExternalStore) would be a
+  // larger refactor without correctness benefit here.
   useEffect(() => {
-    setMounted(true);
     const stored = localStorage.getItem(STORAGE_KEY) as ThemeColorId | null;
     if (stored && THEME_COLORS.some(c => c.id === stored)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveColor(stored);
       applyPalette(stored);
     } else {

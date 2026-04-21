@@ -19,7 +19,12 @@ export function useFirestoreDoc<T>(
 
   useEffect(() => {
     if (!docId) {
+      // Clearing docId means "stop subscribing" — set the matching terminal
+      // state synchronously so consumers don't observe stale data from a
+      // previous docId. This is a legitimate set-in-effect case.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setData(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
       return;
     }
