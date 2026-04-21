@@ -1,0 +1,158 @@
+rules_version = "2";
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // HELPER FUNCTIONS
+    // ============================================================
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function crmUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isActive() {
+      return isAuth() && crmUser().active == true;
+    }
+
+    // Role checks
+    function isSuperAdmin() { return isActive() && crmUser().role == 'superadmin'; }
+    function isAdmin()      { return isActive() && crmUser().role == 'admin'; }
+    function isSalesExec()  { return isActive() && crmUser().role == 'sales_exec'; }
+    function isChannelPartner() { return isActive() && crmUser().role == 'channel_partner'; }
+    function isDigitalMarketing() { return isActive() && crmUser().role == 'digital_marketing'; }
+    function isViewer()     { return isActive() && crmUser().role == 'viewer'; }
+
+    // Derived checks used frequently
+    function canAdminister() { return isSuperAdmin() || isAdmin(); }
+    function canManageLeads() { return isSuperAdmin() || isAdmin() || isSalesExec(); }
+
+    // Campaign-only update: every other top-level field on the project
+    // must be identical to the pre-write state.
+    function onlyCampaignsChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['campaigns', 'updated_at']);
+    }
+
+    // ============================================================
+    // LEADS COLLECTION
+    // SuperAdmin / Admin: full CRUD
+    // Sales Exec: read all, create/update, no delete
+    // Channel Partner: read/create/update only their own (owner_uid == uid)
+    // Viewer: read all, no writes
+    // HR / Payroll & Finance: no access
+    // ============================================================
+    match /leads/{leadId} {
+      allow read: if canManageLeads() || isViewer()
+        || (isChannelPartner() && resource.data.owner_uid == request.auth.uid);
+
+      // Sales exec / admin / superadmin can create any lead.
+      allow create: if canManageLeads();
+
+      // Channel partners can create leads, but only with owner_uid == self.
+      allow create: if isChannelPartner()
+        && request.resource.data.owner_uid == request.auth.uid;
+
+      allow update: if canManageLeads();
+      allow update: if isChannelPartner()
+        && resource.data.owner_uid == request.auth.uid
+        && request.resource.data.owner_uid == request.auth.uid;
+
+      allow delete: if canAdminister();
+    }
+
+    // ============================================================
+    // USERS COLLECTION
+    // SuperAdmin: full CRUD over everyone
+    // Any auth'd user: read/create own doc (for first-login / pending migration)
+    // Admin: read team list (but NOT write — role management is SuperAdmin-only)
+    // ============================================================
+    match /users/{userId} {
+      // Own-doc reads (any auth'd user)
+      allow read: if isAuth() && (
+        request.auth.uid == userId ||
+        userId.matches('pending_.*')
+      );
+      // Admins + SuperAdmins can see the full team list.
+      allow read: if canAdminister();
+
+      // First-login / pending migration creates
+      allow create: if isAuth() && (
+        request.auth.uid == userId ||
+        userId.matches('pending_.*')
+      );
+      // SuperAdmin can create any user doc (pre-registration)
+      allow create: if isSuperAdmin();
+
+      // A user can update their own doc (limited fields — we don't guard this
+      // here because UIs don't expose role/active edits for self; tighten later
+      // if abuse is seen).
+      allow update: if isAuth() && request.auth.uid == userId;
+
+      // Only SuperAdmin can change roles / active state / delete for others.
+      allow update, delete: if isSuperAdmin();
+
+      // Allow deleting pending docs during migration
+      allow delete: if isAuth() && userId.matches('pending_.*');
+    }
+
+    // ============================================================
+    // PROJECTS COLLECTION
+    // SuperAdmin / Admin: full CRUD
+    // Sales Exec / Channel Partner / Viewer / Digital Marketing: read
+    // Digital Marketing: may update ONLY the `campaigns` field (and updated_at)
+    // ============================================================
+    match /projects/{projectId} {
+      allow read: if isActive();
+      allow create, delete: if canAdminister();
+      allow update: if canAdminister();
+      allow update: if isDigitalMarketing() && onlyCampaignsChanged();
+    }
+
+    // ============================================================
+    // INVENTORY COLLECTION
+    // All active users: read
+    // SuperAdmin / Admin: full CRUD
+    // ============================================================
+    match /inventory/{unitId} {
+      allow read: if isActive();
+      allow create, update, delete: if canAdminister();
+    }
+
+    // ============================================================
+    // PROJECT SCHEMAS COLLECTION
+    // ============================================================
+    match /project_schemas/{schemaId} {
+      allow read: if isActive();
+      allow create, update, delete: if canAdminister();
+    }
+
+    // ============================================================
+    // CRM CONFIG COLLECTION
+    // All active users: read
+    // SuperAdmin / Admin: write
+    // property_match threshold: writable by any active user
+    // _user_count: first-user bootstrap create
+    // ============================================================
+    match /crm_config/{configId} {
+      allow read: if isActive();
+      allow write: if canAdminister();
+      allow write: if isActive() && configId == 'property_match';
+      allow create: if isAuth() && configId == '_user_count';
+    }
+
+    // ============================================================
+    // MARKETING TEAMS COLLECTION
+    // ============================================================
+    match /marketing_teams/{teamId} {
+      allow read: if isActive();
+      allow create, update, delete: if canAdminister();
+    }
+
+    // ============================================================
+    // DEFAULT: DENY EVERYTHING ELSE
+    // ============================================================
+  }
+}

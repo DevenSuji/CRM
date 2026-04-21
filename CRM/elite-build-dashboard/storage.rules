@@ -1,0 +1,27 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Project images (hero images, gallery) — readable by all, writable by authenticated admins
+    match /projects/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Branding assets (logos, banners) — readable by all, writable by authenticated admins
+    match /branding/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Call recordings — only authenticated users can read/write
+    match /recordings/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Default: deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

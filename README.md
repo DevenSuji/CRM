@@ -32,7 +32,7 @@ A real estate CRM platform built for the Indian plotted development market. Repl
               +------------------------------------------+
               |           Firestore (asia-south1)        |
               |  leads | projects | inventory | users    |
-              |  crm_config (whatsapp, exotel, kanban)   |
+              |  crm_config (whatsapp, ai, kanban)       |
               +------------------------------------------+
                       ^                     ^
                       |                     |
@@ -42,11 +42,8 @@ A real estate CRM platform built for the Indian plotted development market. Repl
             | - Kanban board   |   | - WhatsApp reminders       |
             | - Dashboard      |   +----------------------------+
             | - Inventory      |
-            | - Admin console  |   +----------------------------+
-            +------------------+   | exotel-call-webhook        |
-                                   | - Call status logging       |
-                                   | - Gemini AI call summaries  |
-                                   +----------------------------+
+            | - Admin console  |
+            +------------------+
 ```
 
 ## Tech Stack
@@ -59,7 +56,7 @@ A real estate CRM platform built for the Indian plotted development market. Repl
 | Backend | Python 3.13 Cloud Functions (Gen 2) |
 | AI | Google Gemini 2.5 Flash via Vertex AI |
 | Storage | Firebase Storage (project images, branding assets) |
-| Messaging | WhatsApp Business API (Meta), Exotel (telephony) |
+| Messaging | WhatsApp Business API (Meta) |
 | Secrets | Google Secret Manager |
 | Region | asia-south1 (Mumbai) |
 
@@ -85,7 +82,6 @@ CRM/
 │   ├── functions/                    # Cloud Functions (Python)
 │   │   ├── lead_ingestion_webhook/   # HTTP: receives leads from ad platforms
 │   │   ├── match_lead/               # Eventarc: AI lead audit + inventory matching
-│   │   ├── exotel_call_webhook/      # HTTP: call status from Exotel
 │   │   └── check_site_visit_reminders/ # HTTP: Cloud Scheduler WhatsApp reminders
 │   │
 │   └── scripts/                      # CLI utilities
@@ -106,7 +102,6 @@ CRM/
 |----------|---------|---------|
 | `lead-ingestion-webhook` | HTTP POST | Receives leads from Meta Ads, Google Ads, websites. Validates input, authenticates via API key, auto-tags projects, writes to Firestore. |
 | `match-lead` | Firestore document create (`leads/{leadId}`) | Runs Gemini 2.5 Flash to classify lead intent (Construction/Investment/Speculation) and urgency (High/Medium/Low). Matches lead to available inventory by budget, location, and facing preference. |
-| `exotel-call-webhook` | HTTP POST | Receives call status callbacks from Exotel. On call completion, uses Gemini to generate a summary. Logs all call activity to the lead's activity log. |
 | `check-site-visit-reminders` | HTTP (Cloud Scheduler, every 30 min) | Checks all leads with upcoming site visits. Sends WhatsApp reminders: day-before at 6 PM IST, morning-of at 8 AM IST. |
 
 ### Firestore Collections
@@ -117,7 +112,7 @@ CRM/
 | `projects` | Real estate projects with name, builder, location, property type, hero image, gallery |
 | `inventory` | Property units within projects, with dynamic schema fields per property type |
 | `users` | CRM user profiles with roles (admin, sales_exec, viewer) |
-| `crm_config` | System configuration: kanban lanes, card colors, WhatsApp/Exotel credentials, branding, user count |
+| `crm_config` | System configuration: kanban lanes, card colors, WhatsApp credentials, branding, user count |
 
 ### Security
 
@@ -132,7 +127,6 @@ CRM/
 | Secret | Used By |
 |--------|---------|
 | `webhook-api-key` | `lead-ingestion-webhook` - authenticates Meta/Google/Website webhook calls |
-| `exotel-webhook-key` | `exotel-call-webhook` - authenticates Exotel callbacks |
 | `scheduler-webhook-key` | `check-site-visit-reminders` - authenticates Cloud Scheduler |
 
 ## Dashboard Features
@@ -141,7 +135,7 @@ CRM/
 - **Lead Detail**: Full lead profile with contact info, AI audit (intent/urgency), activity log, site visit scheduling, callback alarms, property tagging, WhatsApp integration.
 - **Dashboard Metrics**: Pipeline value, revenue, lead-to-site-visit ratio, call volume, funnel analysis by source/demand/geography, associate leaderboard.
 - **Inventory Command Center**: Browse projects and units, filter by status, dynamic fields per property type schema.
-- **Admin Console**: Schema Architect (custom fields per property type), Kanban lane customization, WhatsApp/Exotel config, team management with RBAC, branding, card color palette.
+- **Admin Console**: Schema Architect (custom fields per property type), Kanban lane customization, WhatsApp config, AI settings, team management with RBAC, branding, card color palette.
 - **Projects**: Full CRUD with multi-image gallery, Google Maps location autocomplete.
 - **Theme**: Light/dark mode, 8 font families, 9 wallpaper gradients.
 
@@ -185,14 +179,13 @@ Generate API keys for webhook authentication:
 ```bash
 # Create secrets
 openssl rand -hex 32 | gcloud secrets create webhook-api-key --data-file=- --replication-policy=automatic
-openssl rand -hex 32 | gcloud secrets create exotel-webhook-key --data-file=- --replication-policy=automatic
 openssl rand -hex 32 | gcloud secrets create scheduler-webhook-key --data-file=- --replication-policy=automatic
 
 # Grant Cloud Functions service account access
 PROJECT_NUMBER=$(gcloud projects describe elite-build-crm --format='value(projectNumber)')
 SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
-for SECRET in webhook-api-key exotel-webhook-key scheduler-webhook-key; do
+for SECRET in webhook-api-key scheduler-webhook-key; do
   gcloud secrets add-iam-policy-binding $SECRET \
     --member="serviceAccount:${SA}" \
     --role="roles/secretmanager.secretAccessor"
@@ -218,14 +211,6 @@ gcloud functions deploy lead-ingestion-webhook \
   --entry-point=ingest_universal_lead \
   --trigger-http --allow-unauthenticated \
   --memory=256MB --timeout=60s
-
-# Exotel call webhook (HTTP, public with API key auth)
-gcloud functions deploy exotel-call-webhook \
-  --gen2 --runtime=python313 --region=asia-south1 \
-  --source=CRM/functions/exotel_call_webhook \
-  --entry-point=exotel_call_webhook \
-  --trigger-http --allow-unauthenticated \
-  --memory=512MB --timeout=120s
 
 # Site visit reminders (HTTP, called by Cloud Scheduler)
 gcloud functions deploy check-site-visit-reminders \

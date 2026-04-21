@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+:root {
+  /* Fallback — Light palette (prevents flash before JS hydrates) */
+  --mn-bg: #EEF7FF;
+  --mn-surface: #F5FAFF;
+  --mn-card: #FFFFFF;
+  --mn-card-hover: #E8F2FC;
+  --mn-h1: #1E40AF;
+  --mn-h2: #2563EB;
+  --mn-h3: #334155;
+  --mn-text: #1E293B;
+  --mn-text-muted: #64748B;
+  --mn-border: #C7D9EC;
+  --mn-border-subtle: #DDE8F3;
+  --mn-success: #10B981;
+  --mn-warning: #F59E0B;
+  --mn-danger: #EF4444;
+  --mn-info: #3B82F6;
+  --mn-sidebar-bg: #E2EFFA;
+  --mn-sidebar-active: #2563EB;
+  --mn-input-bg: #FFFFFF;
+  --mn-input-border: #BDD0E5;
+  --mn-input-focus: #2563EB;
+  --mn-overlay: rgba(15, 23, 42, 0.5);
+  --mn-accent: #3B82F6;
+  --mn-lane-divider: #C7D9EC;
+}
+
+@theme inline {
+  --color-mn-bg: var(--mn-bg);
+  --color-mn-surface: var(--mn-surface);
+  --color-mn-card: var(--mn-card);
+  --color-mn-card-hover: var(--mn-card-hover);
+  --color-mn-h1: var(--mn-h1);
+  --color-mn-h2: var(--mn-h2);
+  --color-mn-h3: var(--mn-h3);
+  --color-mn-text: var(--mn-text);
+  --color-mn-text-muted: var(--mn-text-muted);
+  --color-mn-border: var(--mn-border);
+  --color-mn-border-subtle: var(--mn-border-subtle);
+  --color-mn-success: var(--mn-success);
+  --color-mn-warning: var(--mn-warning);
+  --color-mn-danger: var(--mn-danger);
+  --color-mn-info: var(--mn-info);
+  --color-mn-sidebar-bg: var(--mn-sidebar-bg);
+  --color-mn-sidebar-active: var(--mn-sidebar-active);
+  --color-mn-input-bg: var(--mn-input-bg);
+  --color-mn-input-border: var(--mn-input-border);
+  --color-mn-input-focus: var(--mn-input-focus);
+  --color-mn-overlay: var(--mn-overlay);
+  --color-mn-accent: var(--mn-accent);
+  --color-mn-lane-divider: var(--mn-lane-divider);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html, body {
+  background-color: var(--mn-bg) !important;
+  color: var(--mn-text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--mn-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--mn-text-muted);
+}
+
+/* Select option backgrounds */
+select option {
+  background-color: var(--mn-card);
+  color: var(--mn-text);
+}
+
+/* Slow pulse animation for callback alarm */
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  50% { opacity: 1; box-shadow: 0 0 20px 4px rgba(245, 158, 11, 0.2); }
+}
+.animate-pulse-slow {
+  animation: pulse-slow 2s ease-in-out infinite;
+}

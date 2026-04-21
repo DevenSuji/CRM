@@ -17,7 +17,6 @@ An AI-native Real Estate CRM built for the Indian plotted development market. Th
 - **`CRM/functions/`**: Cloud Functions including:
   - `meta_webhook` / `lead_ingestion_webhook`: Ingests leads from Meta Ads.
   - `match_lead`: Triggered on lead creation to match leads to inventory.
-  - `exotel_call_webhook`: Webhooks for telephony.
   - `check_site_visit_reminders`: Automated visit reminders.
   - `lead_cleanup` & `inventory_cleanup`: Maintenance functions.
 - **`CRM/elite-build-dashboard/`**: The Next.js Admin & Inventory Console. Allows admins to add new projects, define attributes (Plotted Land, Apartment, Villa), and manage user access control.

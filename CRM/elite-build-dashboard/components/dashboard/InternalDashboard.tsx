@@ -1,0 +1,209 @@
+"use client";
+import { useState, useMemo } from 'react';
+import { Lead } from '@/lib/types/lead';
+import { CRMUser } from '@/lib/types/user';
+import { computeInternalMetrics, computeLeaderboard, computeTimeSeries, TimePeriod } from '@/lib/utils/dashboardMetrics';
+import { formatPrice } from '@/lib/utils/formatPrice';
+import { MetricCard } from './MetricCard';
+import { FunnelChart } from './FunnelChart';
+import { Leaderboard } from './Leaderboard';
+import { PipelineTrendChart, LeadsConversionsChart, CallsTrendChart } from './AnimatedCharts';
+import {
+  Zap, MapPin, Bookmark, IndianRupee, TrendingUp, Clock,
+  AlertTriangle, Phone, Timer, BarChart3,
+} from 'lucide-react';
+
+const PERIOD_OPTIONS: { value: TimePeriod; label: string }[] = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+];
+
+interface Props {
+  leads: Lead[];
+  users: CRMUser[];
+  currentUid?: string;
+}
+
+export function InternalDashboard({ leads, users, currentUid }: Props) {
+  const [selectedUid, setSelectedUid] = useState<string>('');
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>('weekly');
+
+  const salesUsers = useMemo(() =>
+    users.filter(u => u.active && u.role !== 'viewer'),
+    [users],
+  );
+
+  const metrics = useMemo(() =>
+    computeInternalMetrics(leads, users, selectedUid || undefined),
+    [leads, users, selectedUid],
+  );
+
+  const timeSeries = useMemo(() =>
+    computeTimeSeries(leads, timePeriod, selectedUid || undefined),
+    [leads, timePeriod, selectedUid],
+  );
+
+  const isTeamView = !selectedUid;
+
+  return (
+    <div className="space-y-6">
+      {/* Filters */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-black text-mn-text-muted uppercase tracking-wider">View:</label>
+          <select
+            value={selectedUid}
+            onChange={e => setSelectedUid(e.target.value)}
+            className="px-3 py-2 bg-mn-input-bg border border-mn-input-border rounded-xl text-sm font-bold text-mn-text focus:outline-none focus:border-mn-input-focus"
+          >
+            <option value="">All Team</option>
+            {salesUsers.map(u => (
+              <option key={u.uid || (u as any).id} value={u.uid || (u as any).id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <BarChart3 className="w-3.5 h-3.5 text-mn-text-muted" />
+          <div className="flex bg-mn-input-bg border border-mn-input-border rounded-xl overflow-hidden">
+            {PERIOD_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setTimePeriod(opt.value)}
+                className={`px-3 py-1.5 text-[11px] font-bold transition-all ${
+                  timePeriod === opt.value
+                    ? 'bg-mn-h2/15 text-mn-h2'
+                    : 'text-mn-text-muted hover:text-mn-text'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Metric cards */}
+      <div>
+        <h2 className="text-sm font-black text-mn-h2 uppercase tracking-wider mb-4">
+          {isTeamView ? 'Team Performance' : salesUsers.find(u => (u.uid || (u as any).id) === selectedUid)?.name || 'Performance'}
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <MetricCard
+            title="Speed to Lead"
+            value={metrics.speedToLeadMins > 0 ? `${metrics.speedToLeadMins}m` : '--'}
+            subtitle="Avg. mins to first call"
+            icon={<Zap className="w-5 h-5 text-mn-warning" />}
+            accent={metrics.speedToLeadMins > 30 ? 'text-mn-danger' : 'text-mn-success'}
+          />
+          <MetricCard
+            title="Lead to SV"
+            value={`${metrics.leadToSVRatio.toFixed(1)}%`}
+            icon={<MapPin className="w-5 h-5 text-mn-info" />}
+            accent="text-mn-info"
+          />
+          <MetricCard
+            title="SV to Booking"
+            value={`${metrics.svToBookingRatio.toFixed(1)}%`}
+            icon={<Bookmark className="w-5 h-5 text-mn-success" />}
+            accent="text-mn-success"
+          />
+          <MetricCard
+            title="Pipeline Value"
+            value={formatPrice(metrics.pipelineValue)}
+            icon={<IndianRupee className="w-5 h-5 text-mn-h2" />}
+            accent="text-mn-h2"
+          />
+          <MetricCard
+            title="Revenue Closed"
+            value={formatPrice(metrics.revenueClosed)}
+            icon={<TrendingUp className="w-5 h-5 text-mn-success" />}
+            accent="text-mn-success"
+          />
+        </div>
+      </div>
+
+      {/* Second row of metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          title="Avg. Closing Cycle"
+          value={metrics.avgClosingCycleDays > 0 ? `${Math.round(metrics.avgClosingCycleDays)}d` : '--'}
+          icon={<Clock className="w-5 h-5 text-mn-info" />}
+          accent="text-mn-info"
+        />
+        <MetricCard
+          title="Lead Leakage"
+          value={`${metrics.leadLeakageRate.toFixed(1)}%`}
+          subtitle="Stuck > 48h"
+          icon={<AlertTriangle className="w-5 h-5 text-mn-danger" />}
+          accent={metrics.leadLeakageRate > 20 ? 'text-mn-danger' : 'text-mn-text'}
+        />
+        <MetricCard
+          title="Calls This Week"
+          value={metrics.callsThisWeek}
+          icon={<Phone className="w-5 h-5 text-mn-h2" />}
+          accent="text-mn-h2"
+        />
+        <MetricCard
+          title="Avg. Talk Time"
+          value={metrics.avgTalkTimeMins > 0 ? `${metrics.avgTalkTimeMins}m` : '--'}
+          icon={<Timer className="w-5 h-5 text-mn-accent" />}
+          accent="text-mn-accent"
+        />
+      </div>
+
+      {/* Animated Charts — 3 key visualizations */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <PipelineTrendChart data={timeSeries} />
+        <LeadsConversionsChart data={timeSeries} />
+      </div>
+      <CallsTrendChart data={timeSeries} />
+
+      {/* Aging Leads table */}
+      {metrics.agingLeads.length > 0 && (
+        <div>
+          <h2 className="text-sm font-black text-mn-h2 uppercase tracking-wider mb-4">Aging Leads</h2>
+          <div className="bg-mn-card border border-mn-border rounded-2xl shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-mn-border/40">
+                  <th className="text-left px-5 py-3 text-[10px] font-black text-mn-text-muted uppercase tracking-wider">Lead</th>
+                  <th className="text-left px-5 py-3 text-[10px] font-black text-mn-text-muted uppercase tracking-wider">Status</th>
+                  <th className="text-left px-5 py-3 text-[10px] font-black text-mn-text-muted uppercase tracking-wider">Assigned To</th>
+                  <th className="text-right px-5 py-3 text-[10px] font-black text-mn-text-muted uppercase tracking-wider">Hours Stuck</th>
+                </tr>
+              </thead>
+              <tbody>
+                {metrics.agingLeads.map(lead => (
+                  <tr key={lead.id} className="border-b border-mn-border/20 hover:bg-mn-card-hover transition-colors">
+                    <td className="px-5 py-3 text-sm font-bold text-mn-text">{lead.name}</td>
+                    <td className="px-5 py-3">
+                      <span className="text-xs font-bold px-2 py-1 rounded-lg bg-mn-warning/15 text-mn-warning">{lead.status}</span>
+                    </td>
+                    <td className="px-5 py-3 text-sm text-mn-text-muted">{lead.assignedTo}</td>
+                    <td className="px-5 py-3 text-right">
+                      <span className={`text-sm font-black ${lead.hoursStuck > 96 ? 'text-mn-danger' : 'text-mn-warning'}`}>
+                        {lead.hoursStuck}h
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Funnel */}
+      <FunnelChart stages={metrics.funnelStages} title="Lead Funnel" />
+
+      {/* Leaderboard — only in team view */}
+      {isTeamView && (
+        <Leaderboard leads={leads} users={users} currentUid={currentUid} />
+      )}
+    </div>
+  );
+}

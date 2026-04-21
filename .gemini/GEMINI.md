@@ -61,7 +61,7 @@ The Admin defines the "DNA" per project.
 
 ## 📞 V. Communication & Compliance (Indian Market)
 
-- **Cloud Telephony:** Integration with local stacks (Exotel/Twilio) for in-browser SIP dialing.
+- **Telephony:** Manual calling (no in-app click-to-call). Exotel integration was removed 2026-04-21.
 - **TRAI Compliance:** Mandatory "DND Scrub" check before any manual or automated call.
 - **WhatsApp Flow:** Automatic delivery of project details and pictures upon first successful communication. Media and data are injected via the Admin Schema Factory.
 
