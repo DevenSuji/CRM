@@ -2,6 +2,11 @@ import { Lead } from '@/lib/types/lead';
 import { CRMUser } from '@/lib/types/user';
 import { MarketingTeam } from '@/lib/types/config';
 
+/** useFirestoreCollection spreads the doc id into `id`, so CRMUser objects
+ *  coming from that hook have both `uid` and `id`. Keep them in sync here. */
+type UserWithDocId = CRMUser & { id?: string };
+const userIdentifier = (u: UserWithDocId): string | undefined => u.uid || u.id;
+
 /* ==================== Shared Types ==================== */
 
 export interface NameValue {
@@ -132,7 +137,7 @@ export interface AgingLead {
 
 export function computeInternalMetrics(
   leads: Lead[],
-  users: CRMUser[],
+  users: UserWithDocId[],
   filterUid?: string,
 ): InternalMetrics {
   const filtered = filterUid
@@ -209,7 +214,7 @@ export function computeInternalMetrics(
         const hoursStuck = (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
         if (hoursStuck > 48) {
           stuck48h++;
-          const assignee = users.find(u => u.uid === lead.assigned_to || (u as any).id === lead.assigned_to);
+          const assignee = users.find(u => userIdentifier(u) === lead.assigned_to);
           agingLeads.push({
             id: lead.id,
             name: lead.raw_data.lead_name,
@@ -363,14 +368,14 @@ export function computeTimeSeries(leads: Lead[], period: TimePeriod, filterUid?:
 
 /* ==================== Leaderboard ==================== */
 
-export function computeLeaderboard(leads: Lead[], users: CRMUser[]): LeaderboardEntry[] {
+export function computeLeaderboard(leads: Lead[], users: UserWithDocId[]): LeaderboardEntry[] {
   const weekStart = startOfWeek();
   const entries: LeaderboardEntry[] = [];
 
   for (const user of users) {
     if (!user.active || user.role === 'viewer') continue;
 
-    const uid = user.uid || (user as any).id;
+    const uid = userIdentifier(user);
     const userLeads = leads.filter(l => l.assigned_to === uid);
     let leadsClosed = 0;
     let pipelineValue = 0;
@@ -390,7 +395,7 @@ export function computeLeaderboard(leads: Lead[], users: CRMUser[]): Leaderboard
       }
     }
 
-    entries.push({ uid: user.uid || (user as any).id, name: user.name, leadsClosed, pipelineValue, callsThisWeek });
+    entries.push({ uid: userIdentifier(user) || '', name: user.name, leadsClosed, pipelineValue, callsThisWeek });
   }
 
   entries.sort((a, b) => b.leadsClosed - a.leadsClosed || b.pipelineValue - a.pipelineValue);

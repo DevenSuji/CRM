@@ -1673,7 +1673,7 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
                       )}
                       {diag.leadOk && diag.matchCount > 0 && (
                         <div className="pt-2 border-t border-mn-border/30 text-mn-success">
-                          {diag.matchCount} unit{diag.matchCount > 1 ? 's' : ''} match. If the card isn't in the Property Matched lane yet, give the matcher ~2 seconds (debounced) or save any edit to trigger a re-run.
+                          {diag.matchCount} unit{diag.matchCount > 1 ? 's' : ''} match. If the card isn&apos;t in the Property Matched lane yet, give the matcher ~2 seconds (debounced) or save any edit to trigger a re-run.
                           <ul className="mt-1 space-y-0.5">
                             {kept.slice(0, 10).map(u => (
                               <li key={u.unitId} className="text-mn-text-muted">✓ <strong className="text-mn-text">{u.projectName}</strong> — ₹{u.price.toLocaleString('en-IN')}</li>

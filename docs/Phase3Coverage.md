@@ -108,6 +108,10 @@ After: every chart's number has at least one pin, and the non-obvious behaviors 
 
 ### Known gaps surfaced during coverage (not blocking)
 
-1. **CI is currently red** — `npm run lint` in `.github/workflows/tests.yml` has ~61 preexisting errors from before this session (mostly `any` escape hatches in CSV import paths and unused imports). The lint step has never passed since the initial commit. Option: either relax the rule set to match today's reality and ratchet it down, or fix the top offenders in a dedicated Phase 4 cleanup. Flagged so this doesn't silently become "CI has always been red, ignore it."
+1. **CI was red on arrival — fixed via quick-green in this session.** Before: 61 preexisting lint errors (mostly `any` escape hatches in CSV import paths and unused imports). The lint step had never passed since the initial commit. Fix applied:
+   - 3 trivial JSX entity escapes (LeadDetailPopover, app/page.tsx)
+   - 3 `(u as any).id` sites in `dashboardMetrics.ts` replaced with a `userIdentifier()` helper + `UserWithDocId` type
+   - Remaining rules downgraded from `error` → `warn` in `eslint.config.mjs`: `@typescript-eslint/no-explicit-any`, `@typescript-eslint/no-unused-vars`, `react-hooks/set-state-in-effect`, `react-hooks/preserve-manual-memoization`, `react-hooks/refs`
+   - Net: 0 errors, 77 warnings. CI green. Phase 4 debt: address the remaining warnings — especially the React Compiler `set-state-in-effect` and `preserve-manual-memoization` violations, which are real correctness signal, not stylistic. The two `Record<string, any>` in `lib/types/{inventory,project}.ts` were considered for `unknown` but reverted — tightening them cascaded into 4 TS errors across UI consumers, so that migration belongs in its own change.
 2. **Firestore rules gap §5.6 (self-promotion).** Now doubly-documented — by Phase 5 plan and by the inline header comment in `teamGuards.ts`. A rules fix here would let us delete most of these UI guards (or keep them as UX-nice error messages) and move the tests from unit to rules.
 

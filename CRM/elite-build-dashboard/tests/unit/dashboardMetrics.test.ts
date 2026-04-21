@@ -235,8 +235,8 @@ describe('computeInternalMetrics', () => {
 
   it('scopes to a single user when filterUid is provided', () => {
     const leads = [
-      makeLead({ id: 'a', assigned_to: 'alice', status: 'Closed', raw: { budget: 1_000_000 } as any }),
-      makeLead({ id: 'b', assigned_to: 'bob', status: 'Closed', raw: { budget: 999 } as any }),
+      makeLead({ id: 'a', assigned_to: 'alice', status: 'Closed', raw: { budget: 1_000_000 } }),
+      makeLead({ id: 'b', assigned_to: 'bob', status: 'Closed', raw: { budget: 999 } }),
     ];
     const users = [makeUser({ uid: 'alice' }), makeUser({ uid: 'bob' })];
     const result = computeInternalMetrics(leads, users, 'alice');
@@ -245,10 +245,10 @@ describe('computeInternalMetrics', () => {
 
   it('excludes terminal-status leads from pipelineValue', () => {
     const leads = [
-      makeLead({ id: 'a', status: 'New', raw: { budget: 100 } as any }),
-      makeLead({ id: 'b', status: 'Closed', raw: { budget: 999 } as any }),
-      makeLead({ id: 'c', status: 'Rejected', raw: { budget: 999 } as any }),
-      makeLead({ id: 'd', status: 'Site Visit', raw: { budget: 200 } as any }),
+      makeLead({ id: 'a', status: 'New', raw: { budget: 100 } }),
+      makeLead({ id: 'b', status: 'Closed', raw: { budget: 999 } }),
+      makeLead({ id: 'c', status: 'Rejected', raw: { budget: 999 } }),
+      makeLead({ id: 'd', status: 'Site Visit', raw: { budget: 200 } }),
     ];
     const result = computeInternalMetrics(leads, []);
     expect(result.pipelineValue).toBe(300);
@@ -297,14 +297,14 @@ describe('computeInternalMetrics', () => {
         created_at: ts(new Date('2026-04-01T00:00:00Z')),
         activity_log: [call(new Date('2026-04-17T12:00:00Z'))],
         assigned_to: 'alice',
-        raw: { lead_name: 'Old Lead' } as any,
+        raw: { lead_name: 'Old Lead' },
       }),
       makeLead({
         id: 'fresh', status: 'Nurturing',
         created_at: ts(new Date('2026-04-01T00:00:00Z')),
         activity_log: [call(new Date('2026-04-20T10:00:00Z'))],
         assigned_to: 'bob',
-        raw: { lead_name: 'Fresh Lead' } as any,
+        raw: { lead_name: 'Fresh Lead' },
       }),
     ];
     const users = [makeUser({ uid: 'alice', name: 'Alice' }), makeUser({ uid: 'bob', name: 'Bob' })];
@@ -429,9 +429,9 @@ describe('computeTimeSeries', () => {
   it('increments revenue only for Closed leads', () => {
     const today = new Date('2026-04-20T10:00:00Z');
     const leads = [
-      makeLead({ id: 'a', status: 'Closed', created_at: ts(today), raw: { budget: 500_000 } as any }),
-      makeLead({ id: 'b', status: 'Booked', created_at: ts(today), raw: { budget: 999 } as any }),
-      makeLead({ id: 'c', status: 'Site Visit', created_at: ts(today), raw: { budget: 999 } as any }),
+      makeLead({ id: 'a', status: 'Closed', created_at: ts(today), raw: { budget: 500_000 } }),
+      makeLead({ id: 'b', status: 'Booked', created_at: ts(today), raw: { budget: 999 } }),
+      makeLead({ id: 'c', status: 'Site Visit', created_at: ts(today), raw: { budget: 999 } }),
     ];
     const result = computeTimeSeries(leads, 'daily');
     const totalRevenue = result.reduce((s, b) => s + b.revenue, 0);
@@ -520,13 +520,13 @@ describe('computeLeaderboard', () => {
     ];
     const leads: Lead[] = [
       // Alice: 1 closed, no pipeline
-      makeLead({ id: 'a1', assigned_to: 'alice', status: 'Closed', raw: { budget: 100 } as any }),
+      makeLead({ id: 'a1', assigned_to: 'alice', status: 'Closed', raw: { budget: 100 } }),
       // Bob: 2 closed, no pipeline — rank #1
-      makeLead({ id: 'b1', assigned_to: 'bob', status: 'Closed', raw: { budget: 200 } as any }),
-      makeLead({ id: 'b2', assigned_to: 'bob', status: 'Closed', raw: { budget: 300 } as any }),
+      makeLead({ id: 'b1', assigned_to: 'bob', status: 'Closed', raw: { budget: 200 } }),
+      makeLead({ id: 'b2', assigned_to: 'bob', status: 'Closed', raw: { budget: 300 } }),
       // Carol: 1 closed, big pipeline → beats Alice on tiebreaker
-      makeLead({ id: 'c1', assigned_to: 'carol', status: 'Closed', raw: { budget: 100 } as any }),
-      makeLead({ id: 'c2', assigned_to: 'carol', status: 'New', raw: { budget: 10_000_000 } as any }),
+      makeLead({ id: 'c1', assigned_to: 'carol', status: 'Closed', raw: { budget: 100 } }),
+      makeLead({ id: 'c2', assigned_to: 'carol', status: 'New', raw: { budget: 10_000_000 } }),
     ];
     const result = computeLeaderboard(leads, users);
     expect(result.map(e => e.uid)).toEqual(['bob', 'carol', 'alice']);
@@ -535,9 +535,9 @@ describe('computeLeaderboard', () => {
   it('does not include terminal-status leads in pipelineValue', () => {
     const users = [makeUser({ uid: 'u1', name: 'U1' })];
     const leads = [
-      makeLead({ id: 'a', assigned_to: 'u1', status: 'New', raw: { budget: 100 } as any }),
-      makeLead({ id: 'b', assigned_to: 'u1', status: 'Closed', raw: { budget: 999 } as any }),
-      makeLead({ id: 'c', assigned_to: 'u1', status: 'Rejected', raw: { budget: 999 } as any }),
+      makeLead({ id: 'a', assigned_to: 'u1', status: 'New', raw: { budget: 100 } }),
+      makeLead({ id: 'b', assigned_to: 'u1', status: 'Closed', raw: { budget: 999 } }),
+      makeLead({ id: 'c', assigned_to: 'u1', status: 'Rejected', raw: { budget: 999 } }),
     ];
     const result = computeLeaderboard(leads, users);
     expect(result[0].pipelineValue).toBe(100);

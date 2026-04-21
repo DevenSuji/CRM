@@ -80,7 +80,7 @@ export function LeadDetailPopover({ lead }: LeadDetailPopoverProps) {
       {raw.note && raw.note !== 'No note provided' && (
         <div className="pt-3 border-t border-mn-border/30">
           <p className="text-[10px] font-black text-mn-h3 uppercase mb-1">Note</p>
-          <p className="text-sm text-mn-text italic leading-relaxed">"{raw.note}"</p>
+          <p className="text-sm text-mn-text italic leading-relaxed">&ldquo;{raw.note}&rdquo;</p>
         </div>
       )}
 
