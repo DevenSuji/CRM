@@ -247,3 +247,98 @@ Before this session: zero tests on the Kanban board. The `booked ↔ inventory` 
 
 After: every drag decision branch has at least one pin, both the common paths (simple moves, property-matched→booked) and the corner cases (unknown drop target, stuck states, historical status aliases). The coupled `booked ↔ inventory` invariant is now a discriminated-union type — the compiler makes sure the caller handles `unbook_batch` correctly.
 
+---
+
+## Session 5 (2026-04-22): Property matcher — scoring, gating, diagnostics
+
+**Why this surface is high-value:** the property matcher is the CRM's one piece of behavior that *writes* to leads on its own. A regression here moves leads into the wrong lane (`Property Matched` → `Nurturing` or vice versa) or stamps wrong `interested_properties` onto lead docs — both user-visible and hard to undo since the matcher will happily re-assert its (wrong) conclusion on the next tick. On top of that: the CP crash-debugging session earlier today surfaced that this matcher runs for CPs, who don't have inventory write access (see [IssuesToAddress.md](./IssuesToAddress.md) item 1). Coverage here both pins correctness and sets up the gating fix — we can change how the hook is called without worrying about the math regressing.
+
+### What was extracted
+
+[`lib/utils/propertyMatcher.ts`](../CRM/elite-build-dashboard/lib/utils/propertyMatcher.ts) (new) — the pure logic that was previously in `lib/hooks/usePropertyMatching.ts`. Four exports are the testable surface:
+
+- `resolveInterests(raw)` — multi-select interest array with legacy single-string fallback; treats the `'General Query'` sentinel as "no interest" (a non-obvious rule worth pinning).
+- `resolveBHK(raw)` — BHK preference, returning `null` for 0/unset/negative.
+- `computeMatches(lead, inventory, projects, thresholdPercent)` — the whole match-and-group-and-sort pipeline. Returns a `MatchResult[]` sorted by proximity (if lead + project both have geo) with a 1km tolerance before falling back to price.
+- `diagnoseMatches(...)` — per-unit explain output used by the matcher-debugger UI. Reports `{ leadOk, leadReason, matchCount, units: [{ matched, reason }] }`.
+
+The hook [`lib/hooks/usePropertyMatching.ts`](../CRM/elite-build-dashboard/lib/hooks/usePropertyMatching.ts) now re-exports these for backwards compatibility (lots of existing call sites read them from the hook path) and internally imports from `lib/utils/propertyMatcher.ts`. The React/Firestore side of the hook — `useEffect`, debounce, `updateDoc` — stays in the hook file. Clean split between pure and impure.
+
+### Test file
+
+[`tests/unit/propertyMatcher.test.ts`](../CRM/elite-build-dashboard/tests/unit/propertyMatcher.test.ts) — 55 tests.
+
+### What's covered
+
+- **`resolveInterests`:**
+  - New `interests[]` array wins when non-empty.
+  - Legacy single `interest` string used as fallback.
+  - Empty `interests[]` falls through to legacy.
+  - `'General Query'` sentinel treated as "no interest" (pinned — this is the CSV-import default for leads without a stated interest; a regression that treats it as a real property type would mean *zero* real inventory could match).
+  - Both fields missing → `[]`.
+  - `interests[]` wins even when legacy `interest` is also set.
+
+- **`resolveBHK`:**
+  - Positive integer returned as-is.
+  - `0` treated as null sentinel (not set).
+  - `undefined` → null.
+  - Negative value → null (defensive).
+
+- **`computeMatches` — lead-level guards:** empty interests / zero budget / negative budget / empty inventory all return `[]` without crashing.
+
+- **`computeMatches` — per-unit filters:**
+  - Unit `propertyType` must be in the lead's interests.
+  - Unit `status !== 'Available'` is excluded.
+  - Unit `price <= 0` excluded.
+  - Unit `price > budget × (1 + threshold%)` excluded; pinned boundary math — a unit exactly at the ceiling is *included* (`≤`, not `<`).
+  - Threshold = 0 makes the ceiling the budget exactly.
+  - `dismissed_matches` exclusion by `projectId`.
+
+- **`computeMatches` — BHK non-negotiable gate:**
+  - For Apartment / Villa / Individual House: units below lead BHK excluded, matching/above included.
+  - Plots ignore the BHK gate entirely (plots don't have BHK; leads can still have BHK set).
+  - Missing unit `bhk` field treated as 0 — under-matches rather than mis-matches (better UX: no accidental match on incomplete data).
+  - Lead BHK not set → gate skipped entirely.
+
+- **`computeMatches` — project grouping + aggregation:**
+  - Multiple units from the same project collapse into one result with `matchedUnitCount` and `bestPrice`.
+  - One result per project in multi-project scenarios.
+  - Project-document fields preferred over stale unit-level copies (name, location).
+  - Unit-level fallback when project is not in the projects list.
+  - `'Unknown'` sentinel when both sources are empty.
+
+- **`computeMatches` — distance + sorting:**
+  - Haversine distance attached when lead and project both have geo — pinned against known Bangalore/Chennai coords (~290 km).
+  - `distanceKm` is `undefined` when either side lacks geo.
+  - Proximity wins sorting when distance gap > 1 km (pinned with a cheap-but-far vs pricier-but-near case).
+  - Within ±1 km, price wins — the "essentially colocated" tie-break.
+  - When no geo at all, pure price sort.
+
+- **`diagnoseMatches`:**
+  - Eligible-lead path: `leadOk: true`, correct `maxPrice` math, `matchCount` counts only matched units.
+  - Ineligible-lead paths pinned: ineligible status (e.g. `Booked`), no interests, zero budget.
+  - All four eligible statuses (`New` / `First Call` / `Nurturing` / `Property Matched`) accepted — pinned with `it.each` so if the list changes, the test fails.
+  - Per-unit rejection reasons: type mismatch, booked, zero price, budget ceiling, dismissed project, BHK shortfall.
+  - `'MATCH'` sentinel returned for passing units.
+  - Project-name preference (project doc > unit.projectName > `'Unknown project'`).
+  - `unitBHK` reported as number when set, `null` when missing or empty-string (not `0`, which would be ambiguous).
+
+### Deliberately skipped
+
+- **The hook itself (`usePropertyMatching`)** — the debounce, `processedRef` hash, `writingRef` flag, `useEffect` wiring. Testing that requires mocking Firestore + React effects, and the surface is mostly infrastructure around an already-tested pure function. If we see regressions, a targeted `@testing-library/react-hooks` test is the right follow-up, but the math bugs are where the value is.
+- **`matchFingerprint`** (internal to the hook) — covered transitively by the "write vs skip" logic. A bug here would just cause redundant writes, not wrong data.
+- **The `updateDoc` status transitions** (`Property Matched` ↔ `Nurturing` auto-move). This is the hook's side-effect, not the pure matcher's. Covered by the rules suite + would need Firestore emulator for a real test.
+- **`haversineKm`** (internal). Covered transitively by the distance-sorting test that pins a known-coords distance in the ~290 km range.
+
+### Known gaps surfaced during coverage (not blocking)
+
+1. **The hook's status-transition logic is subtle and untested.** If `systemMatches.length > 0` and lead is in `New` / `First Call` / `Nurturing`, it auto-moves to `Property Matched`. If `systemMatches.length === 0` and lead is in `Property Matched` with no manual tags, it moves back to `Nurturing`. No test covers this today — it's in the impure hook body. Worth a targeted hook test once we have a Firestore-mock harness.
+2. **`dismissed_matches` is a per-project list, not per-unit.** If a lead dismisses project P, every unit under P is filtered out permanently. That's today's behavior (pinned). In practice: users who want to un-dismiss a project have no UI path. Separate tech-debt, noted.
+3. **BHK gate's "missing bhk → 0" convention is defensive but brittle.** If inventory data quality improves and all Apartment units have bhk, this rule does nothing. If data quality regresses, we silently drop matches. Worth monitoring via diagnostics when the matcher-debug UI is in active use.
+
+### What this buys us
+
+Before this session: zero tests on the matcher. It writes to leads autonomously — the most dangerous kind of code to leave untested. A bug in the budget-ceiling comparison, the BHK gate, or the group-by-project logic would silently pollute `interested_properties` on every lead that passed through.
+
+After: every gate, every fallback, every sort condition pinned. The distance tie-break rule (±1 km tolerance) is now a test case with named coordinates — future maintainers can see the *why* of the rule, not just the *what*. The extraction also clears the path for fixing the CP gating issue from [IssuesToAddress.md](./IssuesToAddress.md) without risking the math: the pure module is testable without Firebase, so we can wrap the hook's `enabled` flag any way we want.
+
