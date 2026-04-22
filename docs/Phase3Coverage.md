@@ -177,3 +177,73 @@ Before this session: 0% coverage on CSV import. A silent regression (wrong heade
 
 After: every transformation path has at least one pin. The `Number.isFinite` hardening actually fixed a latent bug (non-numeric budget → NaN into Firestore). And the known-gap newline test means the next contributor who tries to "improve" the parser has a visible target.
 
+---
+
+## Session 4 (2026-04-22): Kanban board — lane config + drag transitions
+
+**Why this surface is high-value:** the Kanban board is the primary way sales users move leads through the pipeline. A bug in drag-end logic could silently mis-status leads, lose `booked_unit` references, or — worst case — orphan an inventory unit in `Booked` state with no lead attached. The `Booked` lane has a coupled invariant (lead.booked_unit ↔ inventory.status='Booked') that's held together by a single `writeBatch` in the drag handler. That batch, and the property-matched lane backfill that runs on every board mount, had zero tests.
+
+### What was extracted
+
+[`lib/utils/kanbanLanes.ts`](../CRM/elite-build-dashboard/lib/utils/kanbanLanes.ts) (new) — four pure functions pulled from two places: the inline lane-config massaging in `app/page.tsx` + `app/dashboard/page.tsx`, and the inline grouping/drag logic in `components/KanbanBoard.tsx`.
+
+- `injectPropertyMatchedLane(lanes)` — backfills the `property_matched` lane into saved configs that predate its introduction. Insertion anchor falls through `nurturing → first_call → new`; subsequent lanes have their `order` bumped by 1. Immutable (returns a new array).
+- `backfillLaneEmojis(lanes)` — fills missing `emoji` fields from the default config, falling back to a generic pin. Ensures every lane has something to render on cards.
+- `groupLeadsByLane(leads, sortedLanes)` — buckets leads by `statusToLaneId(lead.status)`. Unknown-status leads fall through to the first lane (so nothing is silently dropped). Each bucket is sorted by `lane_moved_at` desc, with `created_at` desc as tiebreaker.
+- `computeDragMove(activeLeadId, overId, leads, sortedLanes) → DragDecision` — the pure decision function for drag-end. Returns a discriminated union: `noop | block_booked | unbook_batch | simple_update`. Splits the transition logic from the Firestore writes so we can test every branch without a Firestore emulator.
+
+`KanbanBoard.tsx` now calls `groupLeadsByLane` + `computeDragMove` + dispatches on `decision.kind`. The inline `leadsByLane` `useMemo` and the inline drag-end branching are gone. Visible behavior (drag animations, toasts, side effects) is byte-identical.
+
+### Test file
+
+[`tests/unit/kanbanLanes.test.ts`](../CRM/elite-build-dashboard/tests/unit/kanbanLanes.test.ts) — 36 tests.
+
+### What's covered
+
+- **`injectPropertyMatchedLane`:**
+  - No-op when already present.
+  - Insertion anchor: after `nurturing` when present; falls back to `first_call`; falls back to `new`.
+  - Pathological case (no anchor lane at all): returns lanes unchanged rather than crashing.
+  - `order` field is bumped by exactly 1 for every lane that sits after the insertion point.
+  - Immutability: the input array is not mutated.
+
+- **`backfillLaneEmojis`:**
+  - Lanes with existing emoji are untouched.
+  - Lanes matching a default-config id get the default emoji.
+  - Lanes not in the default config get the generic pin `📌` fallback.
+  - Mixed inputs handled correctly.
+
+- **`groupLeadsByLane`:**
+  - Every lane gets a bucket (even if empty).
+  - Leads route to the correct lane via `statusToLaneId`.
+  - The "Matched" → `property_matched` historical alias still routes correctly (pinned because the status string was renamed at some point; leads in the DB can have either value).
+  - Unknown-status leads fall through to the first lane, not dropped.
+  - Sort order: `lane_moved_at` desc primary, `created_at` desc fallback.
+  - Missing timestamps treated as `0`, sorted to the bottom (no crash on optional-chain failures).
+
+- **`computeDragMove`:**
+  - **noop paths:** no `overId`, unknown `overId` (neither a lane nor a lead), missing active lead, same-lane drop, dropping on a card within the same lane.
+  - **`simple_update`:** ordinary cross-lane move; drop on a card in a different lane routes to that card's lane; `property_matched → booked` with a unit already held (the happy path after property-matcher auto-books).
+  - **`block_booked`:** dropping into `booked` without a `booked_unit` on the lead — returns `{ kind: 'block_booked', lead }` so the UI can open the lead detail for unit selection.
+  - **`unbook_batch`:** moving OUT of `booked` while a unit is held — carries `unitId` forward so the batch write can free `inventory.status='Available'` atomically with the lead's status change. Covered for multiple target lanes (`closed`, `rejected`, other).
+  - **Stuck-state recovery:** a lead somehow sitting in `booked` without `booked_unit` (corrupted state from a failed unbook batch) can still be dragged out via `simple_update` — pinned so a future refactor doesn't make the lead un-draggable.
+
+### Deliberately skipped
+
+- **Firestore `writeBatch` / `updateDoc` side effects.** The decision function returns all the data the caller needs to make the writes; testing that Firestore receives the correct shape is transitively covered by the `inventory.rules.test.ts` + `leads.rules.test.ts` suites, which validate what's allowed through the rules layer.
+- **dnd-kit sensor behavior.** Drag activation distance, collision detection, sensor composition — all library-owned. Our tests pass in raw `activeId` / `overId` strings the way `handleDragEnd` consumes them; testing dnd-kit itself is out of scope.
+- **`KanbanLane` / `KanbanCard` rendering.** Pure view components — their correctness is visual, covered by Phase 6 Playwright.
+- **`fitToWindow` responsive sizing.** CSS-only branch, no logic to pin.
+
+### Known gaps surfaced during coverage (not blocking)
+
+1. **The stuck-state recovery path is a symptom, not a cure.** If a lead ends up in `booked` without `booked_unit`, something went wrong — most likely a failed `unbook_batch` (network error after the lead update landed but before the inventory update). The recovery path (drag it out via `simple_update`) works, but the lead silently loses its inventory association. Phase 4 candidate: add a periodic reconciliation that scans for `inventory.booked_by_lead_id` references to leads whose `status != 'Booked'` and offers to fix.
+2. **`statusToLaneId` is called in two places for the same lead** inside `computeDragMove` (once for `currentLaneId`, once indirectly via the `overLead` branch). Minor — not a correctness issue, just a small cleanup opportunity.
+3. **The `property_matched` backfill runs on every board mount.** It's idempotent (short-circuits if the lane is present) and pure, so the cost is negligible, but it could be memoized to the config doc fetch instead. Cosmetic.
+
+### What this buys us
+
+Before this session: zero tests on the Kanban board. The `booked ↔ inventory` invariant was held together by one untested writeBatch. A regression in the drag-end dispatcher (e.g. the `block_booked` check getting inverted) would cause silent data corruption — leads in `Booked` status with no `booked_unit`, or inventory stuck in `Booked` with no lead pointing at it.
+
+After: every drag decision branch has at least one pin, both the common paths (simple moves, property-matched→booked) and the corner cases (unknown drop target, stuck states, historical status aliases). The coupled `booked ↔ inventory` invariant is now a discriminated-union type — the compiler makes sure the caller handles `unbook_batch` correctly.
+

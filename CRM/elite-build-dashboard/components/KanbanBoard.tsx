@@ -7,12 +7,13 @@ import {
 } from '@dnd-kit/core';
 import { useState } from 'react';
 import { Lead } from '@/lib/types/lead';
-import { LaneConfig, statusToLaneId, laneIdToStatus } from '@/lib/types/config';
+import { LaneConfig } from '@/lib/types/config';
 import { KanbanLane } from '@/components/KanbanLane';
 import { KanbanCard } from '@/components/KanbanCard';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, serverTimestamp, writeBatch, deleteField } from 'firebase/firestore';
 import { useToast } from '@/lib/hooks/useToast';
+import { groupLeadsByLane, computeDragMove } from '@/lib/utils/kanbanLanes';
 
 interface KanbanBoardProps {
   leads: Lead[];
@@ -37,33 +38,10 @@ export function KanbanBoard({ leads, lanes, onClickLead, availableColors, fitToW
     [lanes],
   );
 
-  const leadsByLane = useMemo(() => {
-    const map: Record<string, Lead[]> = {};
-    for (const lane of sortedLanes) {
-      map[lane.id] = [];
-    }
-    for (const lead of leads) {
-      const laneId = statusToLaneId(lead.status);
-      if (map[laneId]) {
-        map[laneId].push(lead);
-      } else {
-        // Unknown lane — put in first lane
-        const firstLane = sortedLanes[0]?.id;
-        if (firstLane && map[firstLane]) {
-          map[firstLane].push(lead);
-        }
-      }
-    }
-    // Sort each lane by lane_moved_at desc, then created_at desc
-    for (const laneId of Object.keys(map)) {
-      map[laneId].sort((a, b) => {
-        const aTime = a.lane_moved_at?.toMillis?.() || a.created_at?.toMillis?.() || 0;
-        const bTime = b.lane_moved_at?.toMillis?.() || b.created_at?.toMillis?.() || 0;
-        return bTime - aTime;
-      });
-    }
-    return map;
-  }, [leads, sortedLanes]);
+  const leadsByLane = useMemo(
+    () => groupLeadsByLane(leads, sortedLanes),
+    [leads, sortedLanes],
+  );
 
   const activeLead = useMemo(
     () => activeId ? leads.find(l => l.id === activeId) || null : null,
@@ -77,50 +55,31 @@ export function KanbanBoard({ leads, lanes, onClickLead, availableColors, fitToW
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     setActiveId(null);
     const { active, over } = event;
-    if (!over) return;
 
-    const leadId = active.id as string;
-    let targetLaneId: string;
+    const decision = computeDragMove(
+      active.id as string,
+      over?.id as string | undefined,
+      leads,
+      sortedLanes,
+    );
 
-    // Determine target lane — could be dropping on a lane or on another card
-    if (sortedLanes.find(l => l.id === over.id)) {
-      targetLaneId = over.id as string;
-    } else {
-      // Dropped on a card — find which lane that card is in
-      const overLead = leads.find(l => l.id === over.id);
-      if (overLead) {
-        targetLaneId = statusToLaneId(overLead.status);
-      } else {
-        return;
-      }
-    }
+    if (decision.kind === 'noop') return;
 
-    const lead = leads.find(l => l.id === leadId);
-    if (!lead) return;
-
-    const currentLaneId = statusToLaneId(lead.status);
-    if (currentLaneId === targetLaneId) return;
-
-    const newStatus = laneIdToStatus(targetLaneId);
-
-    // Moving INTO Booked without a booked_unit — block and prompt user to pick the unit
-    // in the lead detail. Prevents double-booking by forcing the unit selection step.
-    if (targetLaneId === 'booked' && !lead.booked_unit) {
+    if (decision.kind === 'block_booked') {
       showToast('error', 'Select the booked unit in the lead detail to complete this move.');
-      onClickLead?.(lead);
+      onClickLead?.(decision.lead);
       return;
     }
 
-    // Moving OUT of Booked while a unit is held — free the inventory unit in the same batch.
-    if (currentLaneId === 'booked' && lead.booked_unit) {
+    if (decision.kind === 'unbook_batch') {
       try {
         const batch = writeBatch(db);
-        batch.update(doc(db, 'leads', leadId), {
-          status: newStatus,
+        batch.update(doc(db, 'leads', decision.leadId), {
+          status: decision.newStatus,
           lane_moved_at: serverTimestamp(),
           booked_unit: deleteField(),
         });
-        batch.update(doc(db, 'inventory', lead.booked_unit.unitId), {
+        batch.update(doc(db, 'inventory', decision.unitId), {
           status: 'Available',
           booked_by_lead_id: deleteField(),
         });
@@ -133,8 +92,8 @@ export function KanbanBoard({ leads, lanes, onClickLead, availableColors, fitToW
     }
 
     try {
-      await updateDoc(doc(db, 'leads', leadId), {
-        status: newStatus,
+      await updateDoc(doc(db, 'leads', decision.leadId), {
+        status: decision.newStatus,
         lane_moved_at: serverTimestamp(),
       });
     } catch (err) {

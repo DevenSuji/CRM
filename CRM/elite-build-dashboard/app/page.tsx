@@ -36,6 +36,7 @@ import { geocodeAddress } from '@/lib/utils/geocode';
 import { ProjectLocationSearch } from '@/components/ProjectLocationSearch';
 import { DateTimePicker } from '@/components/ui/DateTimePicker';
 import { parseCSV, normalizeLead, isValidRow, getLeadName, getPhone, getEmail, type CSVRow } from '@/lib/utils/csvImport';
+import { injectPropertyMatchedLane, backfillLaneEmojis } from '@/lib/utils/kanbanLanes';
 
 export default function LeadsPage() {
   const { crmUser } = useAuth();
@@ -96,29 +97,8 @@ export default function LeadsPage() {
   });
 
   const lanes = useMemo(() => {
-    let raw = (kanbanConfig?.lanes && kanbanConfig.lanes.length > 0) ? kanbanConfig.lanes : DEFAULT_KANBAN_CONFIG.lanes;
-    // Backfill: inject "Property Matched" lane if missing from saved config (after Nurturing)
-    if (!raw.find(l => l.id === 'property_matched')) {
-      const nurturingIndex = raw.findIndex(l => l.id === 'nurturing');
-      const firstCallIndex = raw.findIndex(l => l.id === 'first_call');
-      const insertAfter = nurturingIndex >= 0
-        ? nurturingIndex
-        : firstCallIndex >= 0 ? firstCallIndex : raw.findIndex(l => l.id === 'new');
-      const propertyMatchedLane = DEFAULT_KANBAN_CONFIG.lanes.find(l => l.id === 'property_matched')!;
-      raw = [
-        ...raw.slice(0, insertAfter + 1),
-        { ...propertyMatchedLane, order: insertAfter + 1 },
-        ...raw.slice(insertAfter + 1).map(l => ({ ...l, order: l.order + 1 })),
-      ];
-    }
-    // Backfill emojis for lanes saved before the emoji field was added
-    return raw.map(lane => {
-      if (!lane.emoji) {
-        const defaultLane = DEFAULT_KANBAN_CONFIG.lanes.find(d => d.id === lane.id);
-        return { ...lane, emoji: defaultLane?.emoji || '📌' };
-      }
-      return lane;
-    });
+    const raw = (kanbanConfig?.lanes && kanbanConfig.lanes.length > 0) ? kanbanConfig.lanes : DEFAULT_KANBAN_CONFIG.lanes;
+    return backfillLaneEmojis(injectPropertyMatchedLane(raw));
   }, [kanbanConfig]);
 
   const availableColors = useMemo(
