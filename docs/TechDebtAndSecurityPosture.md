@@ -87,6 +87,12 @@ Splitting the work by **risk** (what could bite us in production) rather than by
 
 **Out of scope for Phase 2:** UI component tests, visual regression, exhaustive edge cases for every form field.
 
+**Status (2026-04-21):** Shipped — infrastructure + 4 of 6 highest-risk paths. Two paths **deferred to Phase 3/4 as tracked feature coverage gaps**:
+- WhatsApp send pipeline (fingerprint dedup, lock acquisition, opt-out gate) — test file TBD
+- Property matcher (threshold logic, geo gate, `last_sent_match_fingerprint` dedup) — test file TBD
+
+Both live in Cloud Functions / `lib/hooks/usePropertyMatching.ts`. Deferred not because they're low-risk (they aren't), but because adding them belongs in the feature-coverage rhythm of Phase 3, not the infrastructure rhythm of Phase 2.
+
 ---
 
 ## Phase 3 — Feature Coverage Sweep

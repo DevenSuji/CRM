@@ -35,6 +35,7 @@ import { formatPrice } from '@/lib/utils/formatPrice';
 import { geocodeAddress } from '@/lib/utils/geocode';
 import { ProjectLocationSearch } from '@/components/ProjectLocationSearch';
 import { DateTimePicker } from '@/components/ui/DateTimePicker';
+import { parseCSV, normalizeLead, isValidRow, getLeadName, getPhone, getEmail, type CSVRow } from '@/lib/utils/csvImport';
 
 export default function LeadsPage() {
   const { crmUser } = useAuth();
@@ -443,57 +444,7 @@ function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void })
 }
 
 /* ==================== CSV IMPORT MODAL ==================== */
-interface CSVRow {
-  lead_name?: string; name?: string; full_name?: string;
-  phone?: string; mobile?: string;
-  email?: string; email_address?: string;
-  budget?: string;
-  plan_to_buy?: string; timeline?: string;
-  profession?: string;
-  location?: string;
-  note?: string; notes?: string;
-  interest?: string;
-  source?: string;
-  [key: string]: string | undefined;
-}
-
-function parseCSV(text: string): CSVRow[] {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
-
-  // Parse header — handle quoted fields
-  const parseRow = (line: string): string[] => {
-    const fields: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
-        else { inQuotes = !inQuotes; }
-      } else if (ch === ',' && !inQuotes) {
-        fields.push(current.trim());
-        current = '';
-      } else {
-        current += ch;
-      }
-    }
-    fields.push(current.trim());
-    return fields;
-  };
-
-  const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, '_'));
-  const rows: CSVRow[] = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseRow(lines[i]);
-    if (values.every(v => !v)) continue; // skip empty rows
-    const row: CSVRow = {};
-    headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
-    rows.push(row);
-  }
-  return rows;
-}
+// Parser + transform live in lib/utils/csvImport.ts so they're testable.
 
 function ImportCSVModal({ open, onClose, userName }: { open: boolean; onClose: () => void; userName: string }) {
   const { showToast } = useToast();
@@ -519,10 +470,6 @@ function ImportCSVModal({ open, onClose, userName }: { open: boolean; onClose: (
     reader.readAsText(selected);
   };
 
-  const getLeadName = (row: CSVRow) => row.lead_name || row.name || row.full_name || 'Unknown';
-  const getPhone = (row: CSVRow) => row.phone || row.mobile || 'N/A';
-  const getEmail = (row: CSVRow) => row.email || row.email_address || 'N/A';
-
   const handleImport = async () => {
     if (preview.length === 0) return;
     setImporting(true);
@@ -530,33 +477,11 @@ function ImportCSVModal({ open, onClose, userName }: { open: boolean; onClose: (
     let failed = 0;
 
     for (const row of preview) {
-      const leadName = getLeadName(row);
-      const phone = getPhone(row);
-
-      if (leadName === 'Unknown' && phone === 'N/A') {
+      if (!isValidRow(row)) {
         failed++;
         continue;
       }
-
-      const leadData = {
-        status: 'New',
-        created_at: Timestamp.now(),
-        source: row.source || (crmUser?.role === 'channel_partner' ? 'Channel Partner CSV' : 'CSV Import'),
-        owner_uid: crmUser?.uid || null,
-        raw_data: {
-          lead_name: leadName,
-          phone: phone,
-          email: getEmail(row),
-          budget: Number(row.budget) || 0,
-          plan_to_buy: row.plan_to_buy || row.timeline || 'Not Specified',
-          profession: row.profession || 'Not Specified',
-          location: row.location || 'Unknown',
-          note: row.note || row.notes || 'Imported from CSV',
-          pref_facings: [],
-          interest: row.interest || 'General Query',
-        },
-      };
-
+      const leadData = normalizeLead(row, { role: crmUser?.role, uid: crmUser?.uid });
       try {
         await addDoc(collection(db, 'leads'), leadData);
         success++;

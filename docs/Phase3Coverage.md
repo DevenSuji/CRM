@@ -115,3 +115,65 @@ After: every chart's number has at least one pin, and the non-obvious behaviors 
    - Net: 0 errors, 77 warnings. CI green. Phase 4 debt: address the remaining warnings — especially the React Compiler `set-state-in-effect` and `preserve-manual-memoization` violations, which are real correctness signal, not stylistic. The two `Record<string, any>` in `lib/types/{inventory,project}.ts` were considered for `unknown` but reverted — tightening them cascaded into 4 TS errors across UI consumers, so that migration belongs in its own change.
 2. **Firestore rules gap §5.6 (self-promotion).** Now doubly-documented — by Phase 5 plan and by the inline header comment in `teamGuards.ts`. A rules fix here would let us delete most of these UI guards (or keep them as UX-nice error messages) and move the tests from unit to rules.
 
+---
+
+## Session 3 (2026-04-22): CSV import
+
+**Why this surface is high-value:** the CSV import is the only user-driven mass-write path in the product. A silent parser bug corrupts lead data at scale — wrong name/phone/email mapping would pollute the CRM with junk, and the only feedback the user gets is a success toast. Unlike form-entry leads (one at a time, visually reviewable), CSV leads land in batches of tens or hundreds. Also: the lint `any`s we downgraded in the CI-green ratchet partly lived here, and the code was trapped inside a modal component with no seams for testing.
+
+### What was extracted
+
+[`lib/utils/csvImport.ts`](../CRM/elite-build-dashboard/lib/utils/csvImport.ts) (new) — four pure functions pulled out of `ImportCSVModal` in `app/page.tsx`:
+
+- `parseCSV(text): CSVRow[]` — quote-aware line parser with header normalization (lowercase + whitespace → underscore) and BOM stripping. Moved as-is from the modal, with one addition: UTF-8 BOM strip for Excel-exported files.
+- `getLeadName / getPhone / getEmail(row)` — fallback chains (`lead_name → name → full_name`, etc.) pulled up to module scope.
+- `isValidRow(row)` — the "reject row if BOTH name AND phone missing" rule.
+- `normalizeLead(row, { role, uid }): NormalizedLead` — pure transform from CSV row to the Firestore lead doc, including source defaults for `channel_partner`, budget coercion, and the `plan_to_buy/timeline` + `note/notes` fallback chains. One hardening change vs the original: `Number.isFinite()` guard so `Number("abc") → NaN` can't leak into Firestore (coerces to 0 instead).
+
+`ImportCSVModal` now calls `parseCSV` → `isValidRow` → `normalizeLead` in sequence. The modal's visible behavior is identical.
+
+### Test file
+
+[`tests/unit/csvImport.test.ts`](../CRM/elite-build-dashboard/tests/unit/csvImport.test.ts) — 47 tests, organized by concern.
+
+### What's covered
+
+- **`parseCSV` happy path:** minimal CSV, multiple rows.
+- **Header normalization:** uppercase headers, whitespace → underscore (`"Lead Name"` → `lead_name`, `"Plan To Buy"` → `plan_to_buy`).
+- **Line endings:** LF, CRLF, mixed, trailing newline.
+- **Quoting:** commas inside quoted fields, doubled-quote escape (`""` → `"`), empty quoted field.
+- **Skipped content:** blank rows, all-empty-field rows, header-only input, empty input, whitespace-only input.
+- **BOM handling:** UTF-8 BOM stripped before header parse (pinned — Excel on Windows writes these, and without the strip the first header becomes `"\uFEFFlead_name"` which breaks the entire file's column mapping).
+- **`getLeadName / getPhone / getEmail` fallback chains:** preference order, empty-string-as-missing (via `||`), all-missing → default sentinel.
+- **`isValidRow`:** rejects empty, rejects email-only, accepts name-only, accepts phone-only, accepts both.
+- **`normalizeLead` source defaults:** `channel_partner` → "Channel Partner CSV"; any other role → "CSV Import"; explicit `row.source` wins; no role → "CSV Import".
+- **`normalizeLead` owner_uid stamping:** uid passed through verbatim, missing uid → `null`, explicit `null` → `null` (all three cases pinned because Firestore rules for channel_partner reads key off `owner_uid`).
+- **`normalizeLead` budget coercion:** integer, decimal, blank → 0, missing → 0, non-numeric → 0 (NaN guard), negative → preserved (intentionally — caller's responsibility).
+- **`normalizeLead` field fallbacks:** `plan_to_buy` ↔ `timeline`, `note` ↔ `notes`, all-missing defaults (`"Not Specified"`, `"Unknown"`, `"Imported from CSV"`, `"General Query"`, `"N/A"`).
+- **Status + timestamp:** always `"New"`, `created_at` is a Firestore `Timestamp`.
+- **End-to-end:** realistic channel-partner CSV with quoted commas, missing budgets, and a trailing empty row → produces two clean lead documents with correct source/uid stamping.
+
+### Known gap pinned in the test suite (Phase 4 follow-up)
+
+**Newlines inside quoted fields are mangled.** `parseCSV` splits on `\r?\n` before its quote-aware cell parser runs, so a CSV like:
+
+```
+lead_name,note
+Alice,"line1
+line2"
+```
+
+…splits into two broken rows — row 0 picks up `"line1` (unterminated quote) as the note, and row 1 gets treated as a new data row starting with `line2"`. The test file has a test named `'mangles quoted fields containing newlines (known gap)'` that **pins the buggy behavior** so anyone fixing the parser sees the test fail and knows to update it. Fixing this requires a character-by-character two-state machine over the whole text instead of line-first parsing — deferred to Phase 4 because no real user has hit it yet (notes with newlines are rare in the lead data we see).
+
+### Deliberately skipped
+
+- **FileReader integration** (`handleFileSelect`'s async decode). Read-from-blob is a browser API; the parser takes `text: string` so it's testable without mocking FileReader. If we ever switch to streaming reads, a thin integration test becomes worth it.
+- **Firestore `addDoc` side effects in `handleImport`**. Covered transitively by the `leads.rules.test.ts` suite (rules enforce who can write), and the shape of the document is pinned by `normalizeLead` tests. A dedicated "import 100 rows, assert success/failed counters" test would basically re-test `addDoc` + the loop's counter arithmetic, both of which are trivially correct.
+- **Encoding beyond UTF-8.** Parser assumes the caller hands it a `string` that's already been decoded from whatever the source encoding was. Excel-as-UTF-16 files would come in as gibberish, but that's a FileReader concern, not a parser concern.
+
+### What this buys us
+
+Before this session: 0% coverage on CSV import. A silent regression (wrong header-normalization rule, a quoting edge case, a budget-NaN leak into Firestore) would land in prod and corrupt leads across every CP import. The parser code was trapped inside `app/page.tsx:446-490` with no test seams.
+
+After: every transformation path has at least one pin. The `Number.isFinite` hardening actually fixed a latent bug (non-numeric budget → NaN into Firestore). And the known-gap newline test means the next contributor who tries to "improve" the parser has a visible target.
+
