@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Lead, InterestedProperty } from '@/lib/types/lead';
@@ -27,7 +27,36 @@ export type {
 
 /** Serialize match results into a stable fingerprint for change detection */
 function matchFingerprint(matches: MatchResult[]): string {
-  return matches.map(m => `${m.projectId}:${m.matchedUnitCount}:${m.bestPrice}:${m.distanceKm ?? ''}`).sort().join('|');
+  return matches.map(m => `${m.projectId}:${m.matchedUnitCount}:${m.bestPrice}:${m.distanceKm ?? ''}:${m.score}:${m.reasons.join('~')}`).sort().join('|');
+}
+
+function matchDataFingerprint(inventory: InventoryUnit[], projects: Project[]): string {
+  const inventoryKey = inventory
+    .map(unit => [
+      unit.id,
+      unit.projectId,
+      unit.propertyType,
+      unit.status,
+      unit.price,
+      unit.fields?.bhk ?? '',
+    ].join(':'))
+    .sort()
+    .join('|');
+
+  const projectKey = projects
+    .map(project => [
+      project.id,
+      project.name,
+      project.location,
+      project.propertyType,
+      project.heroImage ?? '',
+      project.geo?.lat ?? '',
+      project.geo?.lng ?? '',
+    ].join(':'))
+    .sort()
+    .join('|');
+
+  return `${inventoryKey}||${projectKey}`;
 }
 
 interface UsePropertyMatchingOptions {
@@ -35,7 +64,6 @@ interface UsePropertyMatchingOptions {
   inventory: InventoryUnit[];
   projects: Project[];
   thresholdPercent: number;
-  userName: string;
   enabled: boolean;
 }
 
@@ -44,7 +72,6 @@ export function usePropertyMatching({
   inventory,
   projects,
   thresholdPercent,
-  userName,
   enabled,
 }: UsePropertyMatchingOptions) {
   // Track processed leads to avoid write loops: leadId → hash
@@ -53,6 +80,10 @@ export function usePropertyMatching({
   const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
   // Track if we're currently writing
   const writingRef = useRef(false);
+  const dataFingerprint = useMemo(
+    () => matchDataFingerprint(inventory, projects),
+    [inventory, projects],
+  );
 
   // Clear processedRef when threshold changes so all leads get re-evaluated
   const prevThresholdRef = useRef(thresholdPercent);
@@ -83,7 +114,7 @@ export function usePropertyMatching({
 
         // Build hash including all matching parameters
         const leadBHK = resolveBHK(lead.raw_data);
-        const hash = `${budget}-${[...interests].sort().join(',')}-${effectiveThreshold}-${leadBHK || 0}-${(lead.dismissed_matches || []).join(',')}`;
+        const hash = `${budget}-${[...interests].sort().join(',')}-${effectiveThreshold}-${leadBHK || 0}-${(lead.dismissed_matches || []).join(',')}-${dataFingerprint}`;
         if (processedRef.current.get(lead.id) === hash) continue;
 
         const matches = computeMatches(lead, inventory, projects, effectiveThreshold);
@@ -99,6 +130,8 @@ export function usePropertyMatching({
           tagged_by: 'system-match',
           matchedUnitCount: m.matchedUnitCount,
           bestPrice: m.bestPrice,
+          matchScore: m.score,
+          matchReasons: m.reasons,
           ...(m.distanceKm != null ? { distanceKm: Math.round(m.distanceKm * 10) / 10 } : {}),
         }));
 
@@ -120,6 +153,8 @@ export function usePropertyMatching({
               heroImage: p.heroImage || null,
               matchedUnitCount: p.matchedUnitCount || 0,
               bestPrice: p.bestPrice || 0,
+              score: p.matchScore || 0,
+              reasons: p.matchReasons || [],
             }))
         );
         const newFingerprint = matchFingerprint(matches);
@@ -156,7 +191,7 @@ export function usePropertyMatching({
     } finally {
       writingRef.current = false;
     }
-  }, [leads, inventory, projects, thresholdPercent, userName, enabled]);
+  }, [leads, inventory, projects, thresholdPercent, dataFingerprint, enabled]);
 
   useEffect(() => {
     if (!enabled) return;

@@ -42,6 +42,10 @@ export interface InterestedProperty {
   bestPrice?: number;
   /** Distance from lead's location in km (auto-match only, when geo available) */
   distanceKm?: number;
+  /** Explainable match score from 0-100 (auto-match only) */
+  matchScore?: number;
+  /** Human-readable reasons behind the auto-match score */
+  matchReasons?: string[];
 }
 
 export interface ActivityLogEntry {

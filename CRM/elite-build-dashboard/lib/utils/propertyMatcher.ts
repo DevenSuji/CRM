@@ -27,6 +27,8 @@ export interface MatchResult {
   matchedUnitCount: number;
   bestPrice: number;
   distanceKm?: number;
+  score: number;
+  reasons: string[];
 }
 
 /** Haversine distance in km between two lat/lng points */
@@ -38,6 +40,78 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
   const sinLng = Math.sin(dLng / 2);
   const h = sinLat * sinLat + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * sinLng * sinLng;
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function scorePriceFit(bestPrice: number, budget: number, maxPrice: number): number {
+  if (bestPrice <= budget) return 30;
+  if (maxPrice <= budget) return 30;
+  const remainingHeadroom = Math.max(0, maxPrice - bestPrice);
+  const totalHeadroom = maxPrice - budget;
+  return Math.round(10 + (remainingHeadroom / totalHeadroom) * 20);
+}
+
+function scoreDistance(distanceKm?: number): number {
+  if (distanceKm == null) return 8;
+  if (distanceKm <= 5) return 15;
+  if (distanceKm <= 15) return 12;
+  if (distanceKm <= 30) return 9;
+  if (distanceKm <= 50) return 6;
+  return 3;
+}
+
+function buildMatchReasons(
+  match: {
+    propertyType: string;
+    matchedUnitCount: number;
+    bestPrice: number;
+    distanceKm?: number;
+  },
+  budget: number,
+  maxPrice: number,
+  thresholdPercent: number,
+  leadBHK: number | null,
+): string[] {
+  const reasons = [
+    `Property type matches lead interest (${match.propertyType}).`,
+    `${match.matchedUnitCount} available unit${match.matchedUnitCount > 1 ? 's' : ''} matched.`,
+  ];
+
+  if (match.bestPrice <= budget) {
+    reasons.push(`Best price ₹${match.bestPrice.toLocaleString('en-IN')} is within budget.`);
+  } else {
+    reasons.push(
+      `Best price ₹${match.bestPrice.toLocaleString('en-IN')} is within +${thresholdPercent}% ceiling ₹${maxPrice.toLocaleString('en-IN')}.`
+    );
+  }
+
+  if (match.distanceKm != null) {
+    reasons.push(`Project is approximately ${Math.round(match.distanceKm * 10) / 10} km from lead location.`);
+  } else {
+    reasons.push('Location distance not scored because lead or project geo is missing.');
+  }
+
+  if (leadBHK && BHK_PROPERTY_TYPES.has(match.propertyType)) {
+    reasons.push(`Meets the lead's ${leadBHK} BHK minimum.`);
+  }
+
+  return reasons;
+}
+
+function computeMatchScore(
+  bestPrice: number,
+  budget: number,
+  maxPrice: number,
+  matchedUnitCount: number,
+  distanceKm: number | undefined,
+  propertyType: string,
+  leadBHK: number | null,
+): number {
+  const gateScore = 45;
+  const priceScore = scorePriceFit(bestPrice, budget, maxPrice);
+  const distanceScore = scoreDistance(distanceKm);
+  const inventoryDepthScore = Math.min(5, matchedUnitCount);
+  const bhkFitScore = leadBHK && BHK_PROPERTY_TYPES.has(propertyType) ? 5 : 4;
+  return Math.min(100, gateScore + priceScore + distanceScore + inventoryDepthScore + bhkFitScore);
 }
 
 /** Pure matching function — no side effects, easy to test */
@@ -88,19 +162,30 @@ export function computeMatches(
     if (leadGeo && project?.geo) {
       distanceKm = haversineKm(leadGeo, project.geo);
     }
+    const propertyType = project?.propertyType || data.units[0]?.propertyType || '';
+    const scored = {
+      propertyType,
+      matchedUnitCount: data.units.length,
+      bestPrice: data.bestPrice,
+      distanceKm,
+    };
     results.push({
       projectId,
       projectName: project?.name || data.units[0]?.projectName || 'Unknown',
       location: project?.location || data.units[0]?.location || '',
-      propertyType: project?.propertyType || data.units[0]?.propertyType || '',
+      propertyType,
       heroImage: project?.heroImage || null,
       matchedUnitCount: data.units.length,
       bestPrice: data.bestPrice,
       distanceKm,
+      score: computeMatchScore(data.bestPrice, budget, maxPrice, data.units.length, distanceKm, propertyType, leadBHK),
+      reasons: buildMatchReasons(scored, budget, maxPrice, thresholdPercent, leadBHK),
     });
   }
 
   results.sort((a, b) => {
+    const scoreDiff = b.score - a.score;
+    if (Math.abs(scoreDiff) > 5) return scoreDiff;
     if (a.distanceKm != null && b.distanceKm != null) {
       const distDiff = a.distanceKm - b.distanceKm;
       if (Math.abs(distDiff) > 1) return distDiff;

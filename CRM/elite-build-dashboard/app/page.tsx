@@ -92,7 +92,6 @@ export default function LeadsPage() {
     inventory: inventoryUnits,
     projects: allProjects,
     thresholdPercent,
-    userName: crmUser?.name || 'System',
     enabled: !leadsLoading,
   });
 
@@ -1637,6 +1636,14 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
                           {prop.bestPrice && prop.bestPrice > 0 && (
                             <p className="text-[10px] font-bold text-mn-h2 mt-0.5">From {formatPrice(prop.bestPrice)}</p>
                           )}
+                          {prop.matchReasons && prop.matchReasons.length > 0 && (
+                            <p
+                              className="text-[10px] text-mn-text-muted mt-0.5 truncate"
+                              title={prop.matchReasons.join(' ')}
+                            >
+                              {prop.matchReasons[0]}
+                            </p>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-0.5 flex-shrink-0 relative z-[1] pointer-events-none">
                           {prop.tagged_by === 'system' && (
@@ -1644,6 +1651,9 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
                           )}
                           {prop.tagged_by === 'system-match' && (
                             <span className="text-[9px] font-black text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">AUTO</span>
+                          )}
+                          {prop.matchScore != null && (
+                            <span className="text-[9px] font-black text-mn-success bg-mn-success/10 px-1.5 py-0.5 rounded">{prop.matchScore}/100</span>
                           )}
                           {prop.matchedUnitCount && prop.matchedUnitCount > 0 && (
                             <span className="text-[9px] text-mn-text-muted">{prop.matchedUnitCount} unit{prop.matchedUnitCount > 1 ? 's' : ''}</span>

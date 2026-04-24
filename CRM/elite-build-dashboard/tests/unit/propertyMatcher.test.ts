@@ -417,6 +417,69 @@ describe('computeMatches — distance sorting', () => {
   });
 });
 
+// ==================== computeMatches: score + reasons ====================
+
+describe('computeMatches — explainable score', () => {
+  it('attaches a 0-100 score and human-readable reasons to each match', () => {
+    const lead = makeLead({
+      raw_data: makeRaw({ interests: ['Villa'], budget: 8_000_000, bhk: 3 }),
+    });
+    const units = [
+      makeUnit({ propertyType: 'Villa', price: 7_500_000, fields: { bhk: 3 } }),
+    ];
+    const results = computeMatches(lead, units, [], 20);
+
+    expect(results[0].score).toBeGreaterThanOrEqual(0);
+    expect(results[0].score).toBeLessThanOrEqual(100);
+    expect(results[0].reasons).toEqual(expect.arrayContaining([
+      expect.stringMatching(/Property type matches/),
+      expect.stringMatching(/available unit/),
+      expect.stringMatching(/within budget/),
+      expect.stringMatching(/3 BHK/),
+    ]));
+  });
+
+  it('penalizes a price-stretched match that only fits through the threshold', () => {
+    const lead = makeLead({
+      raw_data: makeRaw({ interests: ['Plot'], budget: 5_000_000 }),
+    });
+    const units = [
+      makeUnit({ id: 'u1', projectId: 'within', projectName: 'Within', price: 5_000_000 }),
+      makeUnit({ id: 'u2', projectId: 'stretch', projectName: 'Stretch', price: 5_950_000 }),
+    ];
+    const results = computeMatches(lead, units, [], 20);
+    const within = results.find(r => r.projectId === 'within')!;
+    const stretch = results.find(r => r.projectId === 'stretch')!;
+
+    expect(within.score).toBeGreaterThan(stretch.score);
+    expect(stretch.reasons).toEqual(expect.arrayContaining([
+      expect.stringMatching(/within \+20% ceiling/),
+    ]));
+  });
+
+  it('uses score before distance only when the score gap is meaningful', () => {
+    const lead = makeLead({
+      raw_data: makeRaw({
+        interests: ['Plot'],
+        budget: 10_000_000,
+        geo: { lat: 12.9716, lng: 77.5946 },
+      }),
+    });
+    const units = [
+      makeUnit({ id: 'u1', projectId: 'near-stretch', projectName: 'Near Stretch', price: 11_900_000 }),
+      makeUnit({ id: 'u2', projectId: 'far-budget', projectName: 'Far Budget', price: 8_000_000 }),
+    ];
+    const projects = [
+      makeProject({ id: 'near-stretch', geo: { lat: 12.9720, lng: 77.5950 } }),
+      makeProject({ id: 'far-budget', geo: { lat: 13.0827, lng: 80.2707 } }),
+    ];
+    const results = computeMatches(lead, units, projects, 20);
+
+    expect(results[0].projectId).toBe('far-budget');
+    expect(results[0].score).toBeGreaterThan(results[1].score);
+  });
+});
+
 // ==================== diagnoseMatches ====================
 
 describe('diagnoseMatches — eligible lead', () => {
