@@ -1,6 +1,10 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    function isValidImageUpload() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
 
     // Project images (hero images, gallery) — readable by all, writable by authenticated admins
     match /projects/{allPaths=**} {
@@ -12,6 +16,14 @@ service firebase.storage {
     match /branding/{allPaths=**} {
       allow read: if true;
       allow write: if request.auth != null;
+    }
+
+    // Application surface themes — readable by all. The admin/superadmin gate is
+    // enforced by Firestore on `crm_config/surface_themes`; Storage validates auth
+    // plus image constraints so uploads are not blocked by cross-service lookups.
+    match /surface-themes/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && isValidImageUpload();
     }
 
     // Call recordings — only authenticated users can read/write

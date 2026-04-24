@@ -220,7 +220,7 @@ gcloud functions deploy check-site-visit-reminders \
   --trigger-http --allow-unauthenticated \
   --memory=256MB --timeout=120s
 
-# Lead matcher (Firestore trigger)
+# Lead matcher on lead create (Firestore trigger)
 gcloud functions deploy match-lead \
   --gen2 --runtime=python313 --region=asia-south1 \
   --source=CRM/functions/match_lead \
@@ -230,6 +230,39 @@ gcloud functions deploy match-lead \
   --trigger-event-filters-path-pattern="document=leads/{leadId}" \
   --trigger-location=asia-south1 \
   --memory=512MB --timeout=120s
+
+# Re-match eligible leads when inventory changes
+gcloud functions deploy rematch-leads-on-inventory-change \
+  --gen2 --runtime=python313 --region=asia-south1 \
+  --source=CRM/functions/match_lead \
+  --entry-point=rematch_leads_on_inventory_change \
+  --trigger-event-filters="type=google.cloud.firestore.document.v1.updated" \
+  --trigger-event-filters="database=(default)" \
+  --trigger-event-filters-path-pattern="document=inventory/{unitId}" \
+  --trigger-location=asia-south1 \
+  --memory=512MB --timeout=300s
+
+# Re-match eligible leads when project metadata changes
+gcloud functions deploy rematch-leads-on-project-change \
+  --gen2 --runtime=python313 --region=asia-south1 \
+  --source=CRM/functions/match_lead \
+  --entry-point=rematch_leads_on_project_change \
+  --trigger-event-filters="type=google.cloud.firestore.document.v1.updated" \
+  --trigger-event-filters="database=(default)" \
+  --trigger-event-filters-path-pattern="document=projects/{projectId}" \
+  --trigger-location=asia-south1 \
+  --memory=512MB --timeout=300s
+
+# Re-match eligible leads when the global property-match threshold changes
+gcloud functions deploy rematch-leads-on-threshold-change \
+  --gen2 --runtime=python313 --region=asia-south1 \
+  --source=CRM/functions/match_lead \
+  --entry-point=rematch_leads_on_threshold_change \
+  --trigger-event-filters="type=google.cloud.firestore.document.v1.updated" \
+  --trigger-event-filters="database=(default)" \
+  --trigger-event-filters-path-pattern="document=crm_config/{configId}" \
+  --trigger-location=asia-south1 \
+  --memory=512MB --timeout=300s
 ```
 
 ### 5. Set Up Cloud Scheduler (for WhatsApp reminders)

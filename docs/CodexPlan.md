@@ -334,3 +334,69 @@ This is already a real internal CRM, not a public marketing SPA.
    - `npm test`
    - `npm run build`
    - focused lint completed with warnings only in existing files.
+4. Resumed Phase 1.2 with the first server-authoritative slice:
+   - replaced the legacy `functions/match_lead/main.py` budget/location/facing matcher with the V2 scored matcher contract used by the dashboard.
+   - server matcher now writes `interested_properties` system-match tags with `matchScore`, `matchReasons`, `matchedUnitCount`, `bestPrice`, and optional `distanceKm`.
+   - server matcher now persists `last_match_fingerprint`, keeps `suggested_plot` in sync for legacy UI reads, and writes an activity-log entry for automated match changes.
+   - aligned `functions/on_lead_match_update/main.py` fingerprint dedup with the richer V2 match payload so score/reason/distance changes are treated as distinct match sets.
+5. Validation completed for the server slice:
+   - `python3 -m py_compile CRM/functions/match_lead/main.py CRM/functions/on_lead_match_update/main.py`
+6. Continued Phase 1.2 trigger coverage:
+   - added reusable matcher helpers so the same server-side write path can be called from multiple Eventarc entry points.
+   - added `rematch_leads_on_inventory_change`, `rematch_leads_on_project_change`, and `rematch_leads_on_threshold_change` handlers in `CRM/functions/match_lead/main.py`.
+   - current implementation re-sweeps all eligible leads for those non-lead triggers; this is correct for behavior and a good thin slice, with lead targeting optimization left for a later pass.
+7. Validation completed for the trigger slice:
+   - `python3 -m py_compile CRM/functions/match_lead/main.py CRM/functions/on_lead_match_update/main.py`
+   - `npm test -- tests/unit/propertyMatcher.test.ts`
+8. Added rollout documentation for the new trigger handlers:
+   - documented `gcloud functions deploy` commands for lead-create, inventory-update, project-update, and threshold-update matcher triggers in `README.md`.
+   - documented the current rollout shape explicitly so deployment wiring is not tribal knowledge.
+9. Deployed the matcher trigger slice to production (`elite-build-crm`, `asia-south1`):
+   - `match-lead` updated to the new V2 server-authoritative implementation.
+   - `rematch-leads-on-inventory-change`, `rematch-leads-on-project-change`, and `rematch-leads-on-threshold-change` deployed and active.
+10. Live verification completed:
+   - threshold trigger executed in production and logged `REMATCH_SWEEP` over eligible leads.
+   - project trigger executed in production after a safe `updated_at` touch on a project doc.
+   - inventory trigger deployment verified, but not force-fired with a business-impacting inventory mutation; a dedicated controlled inventory test remains optional.
+11. Controlled inventory-trigger verification completed in production:
+   - safely updated inventory unit `KRvsx4hmvjSvlAzU2RRN` with a non-business field (`_codex_inventory_trigger_verified_at`) to force an Eventarc update without changing pricing, status, or availability.
+   - `rematch-leads-on-inventory-change` fired immediately and logged `REMATCH_SWEEP: reason=inventory:KRvsx4hmvjSvlAzU2RRN leads=12 updated=9`.
+   - the same run logged multiple `MATCH_V2_UPDATED` events, confirming the inventory trigger now re-matches eligible leads end-to-end in production.
+   - Phase 1.2 server-authoritative matching is now operationally verified across lead-create, project-change, threshold-change, and inventory-change paths.
+12. Started Phase 1.3 reverse matching with a usable thin slice:
+   - added a pure reverse-ranking utility in `CRM/elite-build-dashboard/lib/utils/reverseMatcher.ts` to rank buyers for a project or a specific unit.
+   - ranking now combines existing property-match fit with urgency, recency, engagement depth, and current sales stage.
+   - added explainable “why this buyer” output so sales can see both the property-fit reasons and the commercial-priority signals.
+   - surfaced `Best Buyers` in the project overview and inside each selected unit detail panel.
+   - added project-level `Export Call List` CSV output so sales can act on the ranked buyers immediately.
+13. Validation completed for the Phase 1.3 slice:
+   - `npm --prefix CRM/elite-build-dashboard test -- tests/unit/reverseMatcher.test.ts`
+   - `./node_modules/.bin/tsc --noEmit` from `CRM/elite-build-dashboard`
+14. Phase 1.3 moved to server-authoritative reverse matching:
+   - extended `CRM/functions/match_lead/main.py` to persist `reverse_match_projects/{projectId}` and `reverse_match_units/{unitId}` snapshots.
+   - lead-triggered matcher updates now refresh reverse snapshots for affected projects, while inventory/project/threshold sweeps rebuild the full snapshot layer and clean up stale docs.
+   - project and unit `Best Buyers` UI now reads persisted snapshot docs instead of recomputing rankings in the browser.
+   - added Firestore rules for read-only reverse snapshot access and focused rules coverage for those collections.
+15. Validation and rollout completed for server-authoritative reverse matching:
+   - `python3 -m py_compile CRM/functions/match_lead/main.py`
+   - `npm --prefix CRM/elite-build-dashboard test -- tests/unit/reverseMatcher.test.ts`
+   - `./node_modules/.bin/tsc --noEmit` from `CRM/elite-build-dashboard`
+   - `npm run test:rules` from `CRM/elite-build-dashboard` passed with 178 tests.
+   - redeployed `match-lead`, `rematch-leads-on-inventory-change`, `rematch-leads-on-project-change`, and `rematch-leads-on-threshold-change` in `elite-build-crm` (`asia-south1`).
+   - deployed updated Firestore rules so `reverse_match_projects/*` and `reverse_match_units/*` are readable by active users and remain client-write-protected.
+   - safely updated `crm_config/property_match` with `_codex_reverse_snapshot_seeded_at` to seed the first production snapshot refresh.
+   - production logs confirmed `REVERSE_SNAPSHOTS_REFRESHED: reason=property_match_threshold projects=6 units=3 staleProjects=0 staleUnits=0`.
+16. Started Phase 1.4 no-match intelligence:
+   - extended `CRM/functions/match_lead/main.py` to classify unmatched active leads into server-persisted `no_match_intelligence/{leadId}` docs.
+   - added a server-owned `demand_gap_reports/current` summary with reason breakdowns, top unmet property types, localities, budget bands, and recent unmatched leads.
+   - wired the internal dashboard to show the management-facing Demand Gap report for admin and superadmin users.
+   - added Firestore rules so `no_match_intelligence/*` and `demand_gap_reports/*` are readable by active users and remain client-write-protected.
+17. Validation and rollout completed for Phase 1.4:
+   - `python3 -m py_compile CRM/functions/match_lead/main.py`
+   - `./node_modules/.bin/tsc --noEmit` from `CRM/elite-build-dashboard`
+   - `npm run test:rules` from `CRM/elite-build-dashboard` passed with 204 tests.
+   - redeployed `match-lead`, `rematch-leads-on-inventory-change`, `rematch-leads-on-project-change`, and `rematch-leads-on-threshold-change` in `elite-build-crm` (`asia-south1`).
+   - deployed updated Firestore rules for the no-match intelligence collections.
+   - safely updated `crm_config/property_match` with `_codex_demand_gap_seeded_at` to force a production refresh.
+   - production logs confirmed `DEMAND_GAP_REFRESHED: reason=property_match_threshold leads=4`.
+   - production snapshot check confirmed `demand_gap_reports/current.totalNoMatchLeads = 4`, with `Budget Too Low` as the top blocker and `Plotted Land` as the top unmet demand type.

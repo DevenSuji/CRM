@@ -14,43 +14,44 @@ interface KanbanLaneProps {
   fitToWindow?: boolean;
 }
 
-export function KanbanLane({ lane, leads, isLast = false, onClickLead, availableColors, fitToWindow = false }: KanbanLaneProps) {
+export function KanbanLane({ lane, leads, onClickLead, availableColors, fitToWindow = false }: KanbanLaneProps) {
   const { setNodeRef, isOver } = useDroppable({ id: lane.id });
 
   const sizingClasses = fitToWindow
     ? 'flex-1 min-w-0'
-    : 'min-w-[300px] w-[300px] flex-shrink-0';
+    : 'min-w-[min(86vw,340px)] w-[min(86vw,340px)] sm:min-w-[320px] sm:w-[320px] flex-shrink-0';
 
   return (
-    <div className={`flex flex-col ${sizingClasses} ${
-      !isLast ? 'border-r border-mn-lane-divider' : ''
-    }`}>
-      {/* Lane Header */}
-      <div className="px-3 py-2.5 mb-2 border-b-2" style={{ borderBottomColor: lane.color }}>
+    <div className={`mn-lane-shell flex flex-col rounded-[1.75rem] p-2.5 ${sizingClasses}`}>
+      <div className="mn-lane-header mb-2 rounded-[1.4rem] px-3.5 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <span className="text-base flex-shrink-0" role="img">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl text-base shadow-inner ring-1 ring-black/5" role="img" style={{ backgroundColor: `${lane.color}18`, color: lane.color }}>
               {lane.emoji || '●'}
             </span>
-            <h3 className="font-black text-sm text-mn-text uppercase tracking-wider">
-              {lane.label}
-            </h3>
+            <div className="min-w-0">
+              <h3 className="truncate text-[0.95rem] font-black tracking-tight text-mn-text">
+                {lane.label}
+              </h3>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-mn-text-muted/70">
+                Stage
+              </p>
+            </div>
           </div>
           <span
-            className="text-[10px] font-black px-2.5 py-0.5 rounded-full text-mn-text"
-            style={{ backgroundColor: `${lane.color}20` }}
+            className="rounded-full border border-mn-border/35 px-2.5 py-1 text-[10px] font-black text-mn-text shadow-sm"
+            style={{ backgroundColor: `${lane.color}18` }}
           >
             {leads.length}
           </span>
         </div>
       </div>
 
-      {/* Drop zone */}
       <div
         ref={setNodeRef}
-        className={`flex-1 px-2 pb-2 space-y-2 overflow-y-auto transition-colors rounded-xl ${
+        className={`mn-lane-well flex-1 space-y-3 overflow-y-auto rounded-[1.45rem] px-2.5 pb-3 pt-2.5 transition-all ${
           isOver
-            ? 'bg-mn-h2/8'
+            ? 'bg-mn-h2/10 ring-2 ring-mn-ring'
             : ''
         }`}
       >
@@ -61,7 +62,7 @@ export function KanbanLane({ lane, leads, isLast = false, onClickLead, available
         </SortableContext>
 
         {leads.length === 0 && (
-          <div className="flex items-center justify-center py-16 text-xs text-mn-text-muted/30 font-medium">
+          <div className="mn-soft-inset flex items-center justify-center rounded-[1.35rem] border border-dashed py-16 text-[11px] font-bold uppercase tracking-[0.18em] text-mn-text-muted/50">
             Drop leads here
           </div>
         )}

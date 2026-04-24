@@ -46,7 +46,7 @@ function ColorPicker({
     <div className="relative">
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className="w-5 h-5 rounded-full border-2 border-white/60 shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+        className="mn-soft-inset flex h-6 w-6 items-center justify-center rounded-full opacity-0 transition-all group-hover:opacity-100"
         style={{ backgroundColor: currentColor || 'transparent' }}
         title="Set card color"
       >
@@ -55,7 +55,7 @@ function ColorPicker({
 
       {open && (
         <div
-          className="absolute top-7 right-0 z-50 bg-mn-surface border border-mn-border rounded-xl shadow-xl p-2 flex flex-wrap gap-1.5 w-[160px]"
+          className="app-shell-panel absolute right-0 top-8 z-50 flex w-[168px] flex-wrap gap-1.5 rounded-2xl p-2.5"
           onClick={(e) => e.stopPropagation()}
         >
           {colors.map((color) => (
@@ -63,7 +63,7 @@ function ColorPicker({
               key={color}
               onClick={(e) => handleSelect(color, e)}
               className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${
-                currentColor === color ? 'border-mn-text ring-2 ring-mn-h2/40' : 'border-white/40'
+                currentColor === color ? 'border-mn-text ring-2 ring-mn-h2/40' : 'border-mn-border/30'
               }`}
               style={{ backgroundColor: color }}
               title={color}
@@ -203,17 +203,16 @@ export function KanbanCard({ lead, onClickLead, availableColors = [] }: KanbanCa
           ...(cardColor ? { backgroundColor: cardColor, color: textColor } : {}),
         }}
         onClick={handleCardClick}
-        className={`border rounded-xl p-3.5 transition-all cursor-pointer shadow-sm ${
+        className={`cursor-pointer rounded-[1.45rem] border p-4 shadow-sm transition-all backdrop-blur-xl ${
           cardColor
-            ? `border-black/10 ${isDragging ? 'shadow-2xl scale-105' : 'hover:shadow-lg'}`
-            : `bg-mn-card border-mn-border ${
+            ? `border-black/8 shadow-[0_14px_34px_rgba(18,39,33,0.1)] ${isDragging ? 'scale-105 shadow-2xl' : 'hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(18,39,33,0.14)]'}`
+            : `mn-kanban-card ${
                 isDragging
-                  ? 'shadow-2xl shadow-mn-h2/20 border-mn-h2/50 scale-105'
-                  : 'hover:border-mn-input-focus/50 hover:shadow-lg hover:shadow-black/20'
+                  ? 'scale-105 border-mn-h2/50 shadow-2xl shadow-mn-h2/20'
+                  : 'hover:-translate-y-0.5 hover:border-mn-input-focus/45 hover:shadow-[0_18px_40px_rgba(18,39,33,0.12)]'
               }`
         }`}
       >
-        {/* Drag handle + header */}
         <div className="flex items-start gap-2">
           <div
             data-drag-handle
@@ -226,7 +225,12 @@ export function KanbanCard({ lead, onClickLead, availableColors = [] }: KanbanCa
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
-              <h4 className={`font-bold text-sm truncate ${!cardColor ? 'text-mn-text' : ''}`}>{raw.lead_name}</h4>
+              <div className="min-w-0">
+                <h4 className={`truncate text-[15px] font-black tracking-tight ${!cardColor ? 'text-mn-text' : ''}`}>{raw.lead_name}</h4>
+                <p className={`mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${!cardColor ? 'text-mn-text-muted/60' : ''}`} style={{ color: mutedTextColor }}>
+                  Lead card
+                </p>
+              </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {availableColors.length > 0 && (
                   <ColorPicker leadId={lead.id} currentColor={cardColor || undefined} colors={availableColors} />
@@ -243,15 +247,14 @@ export function KanbanCard({ lead, onClickLead, availableColors = [] }: KanbanCa
             </div>
 
             {/* Phone */}
-            <div className="flex items-center gap-1.5 mt-1 text-xs" style={{ color: mutedTextColor }}>
+            <div className="mt-1.5 flex items-center gap-1.5 text-xs" style={{ color: mutedTextColor }}>
               <Phone className={`w-3 h-3 ${!cardColor ? 'text-mn-text-muted' : ''}`} />
               <span className={!cardColor ? 'text-mn-text-muted' : ''}>{raw.phone}</span>
             </div>
 
-            {/* Budget + Interest */}
-            <div className="flex items-center gap-2 mt-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               {raw.budget > 0 && (
-                <span className={`text-xs font-bold ${!cardColor ? 'text-mn-h2' : ''}`}>{formatPrice(raw.budget)}</span>
+                <span className={`rounded-full border px-2.5 py-1 text-xs font-black shadow-sm ${!cardColor ? 'border-mn-h2/10 bg-mn-h2/8 text-mn-h2' : 'border-black/5 bg-white/18'}`}>{formatPrice(raw.budget)}</span>
               )}
               {lead.ai_audit?.intent && (
                 <Badge variant="default" className="text-[10px]">
@@ -262,7 +265,7 @@ export function KanbanCard({ lead, onClickLead, availableColors = [] }: KanbanCa
 
             {/* Interested property from ad */}
             {lead.interested_properties && lead.interested_properties.length > 0 && (
-              <div className="flex items-center gap-1.5 mt-2">
+              <div className="mt-3 flex items-center gap-1.5 rounded-2xl border border-black/5 bg-mn-h2/8 px-2.5 py-2">
                 <Building2 className={`w-3 h-3 flex-shrink-0 ${!cardColor ? 'text-mn-h2' : ''}`} />
                 <span className={`text-[10px] font-bold truncate ${!cardColor ? 'text-mn-h2' : ''}`}>
                   {lead.interested_properties.map(p => p.projectName).join(', ')}
@@ -272,7 +275,7 @@ export function KanbanCard({ lead, onClickLead, availableColors = [] }: KanbanCa
 
             {/* Campaign source badge */}
             {lead.utm?.campaign && (
-              <div className="flex items-center gap-1.5 mt-1.5">
+              <div className="mt-1.5 flex items-center gap-1.5">
                 <Megaphone className={`w-3 h-3 flex-shrink-0 ${!cardColor ? 'text-mn-text-muted' : ''}`} />
                 <span className={`text-[10px] truncate ${!cardColor ? 'text-mn-text-muted' : ''}`} style={{ color: mutedTextColor }}>
                   {lead.utm.campaign}
@@ -280,8 +283,7 @@ export function KanbanCard({ lead, onClickLead, availableColors = [] }: KanbanCa
               </div>
             )}
 
-            {/* Match + timestamp */}
-            <div className="flex items-center justify-between mt-2 pt-2" style={{ borderTopColor: cardColor ? (textColor === '#FFFFFF' ? 'rgba(255,255,255,0.15)' : 'rgba(5,14,60,0.1)') : undefined }}>
+            <div className="mt-3 flex items-center justify-between border-t border-mn-border/40 pt-3" style={{ borderTopColor: cardColor ? (textColor === '#FFFFFF' ? 'rgba(255,255,255,0.16)' : 'rgba(5,14,60,0.1)') : undefined }}>
               {lead.suggested_plot ? (
                 <div className="flex items-center gap-1 text-[10px]" style={{ color: cardColor ? textColor : undefined }}>
                   <Target className={`w-3 h-3 ${!cardColor ? 'text-mn-success' : ''}`} />

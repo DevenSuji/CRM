@@ -61,12 +61,12 @@ export function MarketingDashboard({ leads, marketingTeams }: Props) {
     <div className="space-y-6">
       {/* Team selector */}
       {activeTeams.length > 1 && (
-        <div className="flex items-center gap-3">
+        <div className="app-shell-panel flex items-center gap-3 p-4">
           <label className="text-xs font-black text-mn-text-muted uppercase tracking-wider">Team:</label>
           <select
             value={team.id}
             onChange={e => setSelectedTeamId(e.target.value)}
-            className="px-3 py-2 bg-mn-input-bg border border-mn-input-border rounded-xl text-sm font-bold text-mn-text focus:outline-none focus:border-mn-input-focus"
+            className="rounded-xl border border-mn-input-border bg-mn-input-bg px-3 py-2 text-sm font-bold text-mn-text focus:outline-none focus:border-mn-input-focus"
           >
             {activeTeams.map(t => (
               <option key={t.id} value={t.id}>{t.name}</option>
@@ -127,7 +127,7 @@ export function MarketingDashboard({ leads, marketingTeams }: Props) {
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Source breakdown pie */}
-        <div className="bg-mn-card border border-mn-border rounded-2xl p-5 shadow-sm">
+        <div className="app-shell-panel p-5">
           <h3 className="text-xs font-black text-mn-text-muted uppercase tracking-wider mb-4">Source Breakdown</h3>
           {metrics.sourceBreakdown.length > 0 ? (
             <>
@@ -158,7 +158,7 @@ export function MarketingDashboard({ leads, marketingTeams }: Props) {
         </div>
 
         {/* Campaign performance bar chart */}
-        <div className="bg-mn-card border border-mn-border rounded-2xl p-5 shadow-sm">
+        <div className="app-shell-panel p-5">
           <h3 className="text-xs font-black text-mn-text-muted uppercase tracking-wider mb-4">Campaign Performance</h3>
           {metrics.campaignPerformance.length > 0 ? (
             <ResponsiveContainer width="100%" height={Math.max(200, metrics.campaignPerformance.length * 40)}>
@@ -182,7 +182,7 @@ export function MarketingDashboard({ leads, marketingTeams }: Props) {
         </div>
 
         {/* Project attribution bar chart */}
-        <div className="bg-mn-card border border-mn-border rounded-2xl p-5 shadow-sm">
+        <div className="app-shell-panel p-5">
           <h3 className="text-xs font-black text-mn-text-muted uppercase tracking-wider mb-4">Project Attribution</h3>
           {metrics.projectAttribution.length > 0 ? (
             <ResponsiveContainer width="100%" height={Math.max(200, metrics.projectAttribution.length * 40)}>

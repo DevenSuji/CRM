@@ -68,7 +68,7 @@ def _system_match_fingerprint(interested_properties):
         if p.get("tagged_by") != "system-match":
             continue
         parts.append(
-            f"{p.get('projectId', '')}:{p.get('matchedUnitCount', 0)}:{p.get('bestPrice', 0)}"
+            f"{p.get('projectId', '')}:{p.get('matchedUnitCount', 0)}:{p.get('bestPrice', 0)}:{p.get('distanceKm', '')}:{p.get('matchScore', 0)}:{'~'.join(p.get('matchReasons', []))}"
         )
     parts.sort()
     return "|".join(parts)

@@ -31,9 +31,9 @@ export function ChannelPartnerDashboard({ leads }: Props) {
   return (
     <div className="space-y-6">
       {/* Period picker */}
-      <div className="flex items-center gap-2">
+      <div className="app-shell-panel flex items-center gap-2 p-4">
         <BarChart3 className="w-3.5 h-3.5 text-mn-text-muted" />
-        <div className="flex bg-mn-input-bg border border-mn-input-border rounded-xl overflow-hidden">
+        <div className="flex overflow-hidden rounded-xl border border-mn-input-border bg-mn-input-bg">
           {PERIOD_OPTIONS.map(opt => (
             <button
               key={opt.value}

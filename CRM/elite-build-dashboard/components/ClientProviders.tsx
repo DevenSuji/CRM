@@ -16,7 +16,7 @@ function AppShell({ children }: { children: ReactNode }) {
   return (
     <>
       {crmUser && !isLogin && <TopNav />}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:pb-0">
         <AuthGuard>{children}</AuthGuard>
       </div>
     </>
@@ -26,11 +26,11 @@ function AppShell({ children }: { children: ReactNode }) {
 export function ClientProviders({ children }: { children: ReactNode }) {
   return (
     <ToastProvider>
-      <ThemeProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <ThemeProvider>
           <AppShell>{children}</AppShell>
-        </AuthProvider>
-      </ThemeProvider>
+        </ThemeProvider>
+      </AuthProvider>
     </ToastProvider>
   );
 }

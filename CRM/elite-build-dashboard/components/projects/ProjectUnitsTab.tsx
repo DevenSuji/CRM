@@ -7,12 +7,15 @@ import {
 import {
   Plus, Trash2, X, ChevronRight, MapPin, ArrowUpDown, Search, Building2, Pencil, Save, AlertTriangle,
 } from 'lucide-react';
+import { useFirestoreDoc } from '@/lib/hooks/useFirestoreDoc';
 import { useToast } from '@/lib/hooks/useToast';
 import { Project, SchemaField, DEFAULT_SCHEMA_FIELDS } from '@/lib/types/project';
 import { InventoryUnit, InventoryStatus } from '@/lib/types/inventory';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatPrice } from '@/lib/utils/formatPrice';
+import { BestBuyersPanel } from '@/components/projects/BestBuyersPanel';
+import { ReverseMatchUnitSnapshot } from '@/lib/utils/reverseMatcher';
 
 interface ProjectUnitsTabProps {
   project: Project;
@@ -59,6 +62,10 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
   const [editingUnitFields, setEditingUnitFields] = useState(false);
   const [editDraft, setEditDraft] = useState<Record<string, any>>({});
   const [savingEdit, setSavingEdit] = useState(false);
+  const { data: reverseSnapshot } = useFirestoreDoc<ReverseMatchUnitSnapshot & { id: string }>(
+    'reverse_match_units',
+    selectedUnit?.id || '',
+  );
 
   // Load schema. Normalize legacy fields saved before `scope` was required:
   // treat missing/unknown scope as 'unit' so they show up in the bulk-add grid.
@@ -436,6 +443,7 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
   const inlineFields = unitFields
     .filter(f => !['price', 'status', 'unit_number', 'plot_number'].includes(f.key))
     .slice(0, 3);
+  const unitBestBuyers = reverseSnapshot?.buyers || [];
 
   const renderInlineValue = (field: SchemaField, value: any) => {
     if (value === null || value === undefined || value === '') return '—';
@@ -754,6 +762,18 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
                     )}
                   </div>
                 )}
+              </div>
+
+              <div className="border-t border-mn-border/20 pt-4">
+                <BestBuyersPanel
+                  title="Best Buyers"
+                  subtitle={`Server-ranked buyers for this ${project.propertyType.toLowerCase()} unit.`}
+                  buyers={unitBestBuyers}
+                  emptyText={selectedUnit.status !== 'Available'
+                    ? 'This unit is not available, so reverse matching is intentionally paused.'
+                    : 'No active leads currently fit this unit strongly enough to rank here yet.'}
+                  compact
+                />
               </div>
             </div>
           </div>

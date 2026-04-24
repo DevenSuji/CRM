@@ -41,11 +41,13 @@ export function ProjectSidebar({ projects, selectedId, onSelect, onAddProject, i
   }, [projects, search, filterType, filterStatus]);
 
   return (
-    <aside className="w-80 border-r border-mn-border/30 flex flex-col flex-shrink-0 bg-mn-surface/30">
-      {/* Header */}
-      <div className="p-4 border-b border-mn-border/30 space-y-3">
+    <aside className="app-shell-panel flex max-h-[44vh] w-full flex-shrink-0 flex-col border-b border-mn-border/20 md:max-h-none md:w-[22rem] md:border-b-0">
+      <div className="space-y-4 border-b border-mn-border/20 p-4">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-black text-mn-h3 uppercase tracking-wider">Projects</p>
+          <div>
+            <p className="section-heading">Projects</p>
+            <p className="mt-1 text-xs text-mn-text-muted">Browse and manage inventory-ready launches</p>
+          </div>
           {isAdmin && (
             <Button onClick={onAddProject} icon={<Plus className="w-3.5 h-3.5" />} className="!text-xs !px-3 !py-1.5">
               Add
@@ -58,14 +60,14 @@ export function ProjectSidebar({ projects, selectedId, onSelect, onAddProject, i
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search..."
-            className="w-full pl-9 pr-3 py-2 bg-mn-input-bg border border-mn-input-border rounded-lg text-xs text-mn-text placeholder:text-mn-text-muted/50 focus:outline-none focus:border-mn-input-focus"
+            className="w-full rounded-xl border border-mn-input-border bg-mn-input-bg py-2.5 pl-9 pr-3 text-xs text-mn-text placeholder:text-mn-text-muted/50 focus:outline-none focus:border-mn-input-focus"
           />
         </div>
         <div className="flex gap-2">
           <select
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
-            className="flex-1 px-2 py-1.5 bg-mn-input-bg border border-mn-input-border rounded-lg text-[11px] text-mn-text focus:outline-none focus:border-mn-input-focus"
+            className="flex-1 rounded-xl border border-mn-input-border bg-mn-input-bg px-2 py-2 text-[11px] text-mn-text focus:outline-none focus:border-mn-input-focus"
           >
             <option value="">All Types</option>
             {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -73,7 +75,7 @@ export function ProjectSidebar({ projects, selectedId, onSelect, onAddProject, i
           <select
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
-            className="flex-1 px-2 py-1.5 bg-mn-input-bg border border-mn-input-border rounded-lg text-[11px] text-mn-text focus:outline-none focus:border-mn-input-focus"
+            className="flex-1 rounded-xl border border-mn-input-border bg-mn-input-bg px-2 py-2 text-[11px] text-mn-text focus:outline-none focus:border-mn-input-focus"
           >
             <option value="">All Status</option>
             {PROJECT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -82,7 +84,7 @@ export function ProjectSidebar({ projects, selectedId, onSelect, onAddProject, i
       </div>
 
       {/* Project list */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {loading ? (
           <p className="text-xs text-mn-text-muted text-center py-8 animate-pulse">Loading projects...</p>
         ) : filtered.length === 0 ? (
@@ -97,10 +99,10 @@ export function ProjectSidebar({ projects, selectedId, onSelect, onAddProject, i
             <button
               key={project.id}
               onClick={() => onSelect(project)}
-              className={`w-full text-left rounded-xl border transition-all overflow-hidden ${
+              className={`w-full overflow-hidden rounded-[1.4rem] border text-left transition-all ${
                 selectedId === project.id
-                  ? 'border-mn-h2 bg-mn-h2/10 shadow-sm shadow-mn-h2/10'
-                  : 'border-mn-border/30 bg-mn-card hover:border-mn-border hover:bg-mn-card-hover'
+                  ? 'border-mn-h2/35 bg-mn-h2/8 shadow-[0_16px_32px_rgba(18,39,33,0.08)]'
+                  : 'border-white/45 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(255,255,255,0.68))] hover:border-mn-border/55 hover:bg-white/85 dark:bg-[linear-gradient(180deg,rgba(13,26,22,0.92),rgba(11,24,20,0.82))]'
               }`}
             >
               {/* Mini hero */}
@@ -112,10 +114,10 @@ export function ProjectSidebar({ projects, selectedId, onSelect, onAddProject, i
               <div className="p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <h4 className={`font-bold text-sm truncate ${selectedId === project.id ? 'text-mn-h2' : 'text-mn-text'}`}>
+                    <h4 className={`truncate text-sm font-black ${selectedId === project.id ? 'text-mn-h2' : 'text-mn-text'}`}>
                       {project.name}
                     </h4>
-                    <p className="text-[11px] text-mn-text-muted mt-0.5">{project.builder}</p>
+                    <p className="mt-0.5 text-[11px] text-mn-text-muted">{project.builder}</p>
                   </div>
                   <Badge variant={STATUS_BADGE[project.status] || 'default'} className="flex-shrink-0 !text-[9px]">
                     {project.status}

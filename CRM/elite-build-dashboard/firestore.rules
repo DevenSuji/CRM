@@ -122,6 +122,32 @@ service cloud.firestore {
     }
 
     // ============================================================
+    // REVERSE MATCH SNAPSHOTS
+    // All active users: read
+    // No client writes; server-side functions persist these docs
+    // ============================================================
+    match /reverse_match_projects/{projectId} {
+      allow read: if isActive();
+    }
+
+    match /reverse_match_units/{unitId} {
+      allow read: if isActive();
+    }
+
+    // ============================================================
+    // NO-MATCH INTELLIGENCE / DEMAND GAP REPORTS
+    // All active users: read
+    // No client writes; server-side functions persist these docs
+    // ============================================================
+    match /no_match_intelligence/{leadId} {
+      allow read: if isActive();
+    }
+
+    match /demand_gap_reports/{reportId} {
+      allow read: if isActive();
+    }
+
+    // ============================================================
     // PROJECT SCHEMAS COLLECTION
     // ============================================================
     match /project_schemas/{schemaId} {

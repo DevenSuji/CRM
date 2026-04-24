@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useCallback } from 'react';
 import {
-  DndContext, DragEndEvent, DragOverEvent,
+  DndContext, DragEndEvent,
   PointerSensor, useSensor, useSensors, closestCorners,
   DragOverlay, DragStartEvent,
 } from '@dnd-kit/core';
@@ -109,18 +109,20 @@ export function KanbanBoard({ leads, lanes, onClickLead, availableColors, fitToW
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className={`flex h-full pb-4 px-4 ${fitToWindow ? 'overflow-x-hidden' : 'overflow-x-auto'}`}>
-        {sortedLanes.map((lane, idx) => (
-          <KanbanLane
-            key={lane.id}
-            lane={lane}
-            leads={leadsByLane[lane.id] || []}
-            isLast={idx === sortedLanes.length - 1}
-            onClickLead={onClickLead}
-            availableColors={availableColors}
-            fitToWindow={fitToWindow}
-          />
-        ))}
+      <div className="mn-board-shell relative h-full overflow-hidden rounded-[2rem]">
+        <div className={`relative z-10 flex h-full gap-4 overflow-y-hidden p-4 ${fitToWindow ? 'overflow-x-hidden' : 'overflow-x-auto'}`}>
+          {sortedLanes.map((lane, idx) => (
+            <KanbanLane
+              key={lane.id}
+              lane={lane}
+              leads={leadsByLane[lane.id] || []}
+              isLast={idx === sortedLanes.length - 1}
+              onClickLead={onClickLead}
+              availableColors={availableColors}
+              fitToWindow={fitToWindow}
+            />
+          ))}
+        </div>
       </div>
 
       <DragOverlay>

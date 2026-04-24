@@ -136,19 +136,19 @@ export default function LeadsPage() {
         title="Leads"
         subtitle=""
         actions={
-          <div className="flex items-center gap-3">
+          <div className="mn-segmented flex flex-wrap items-center gap-2 rounded-[1.4rem] p-2">
             <MatchThresholdSlider value={thresholdPercent} />
-            <div className="w-px h-6 bg-mn-border/30" />
+            <div className="hidden h-6 w-px bg-mn-border/30 sm:block" />
             <button
               type="button"
               onClick={() => setFitToWindow(v => !v)}
               title={fitToWindow ? 'Switch to horizontal scroll' : 'Fit all lanes in one window'}
               aria-label={fitToWindow ? 'Switch to horizontal scroll' : 'Fit all lanes in one window'}
               aria-pressed={fitToWindow}
-              className={`flex items-center justify-center w-8 h-8 rounded-md border transition-colors ${
+              className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${
                 fitToWindow
                   ? 'bg-mn-accent/20 border-mn-accent text-mn-accent'
-                  : 'bg-transparent border-mn-border/40 text-mn-text-muted hover:text-mn-text hover:border-mn-border'
+                  : 'bg-transparent border-mn-border/40 text-mn-text-muted hover:border-mn-border hover:bg-mn-card-hover/50 hover:text-mn-text'
               }`}
             >
               {fitToWindow ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}

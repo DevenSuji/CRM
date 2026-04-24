@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { Pencil, Save, MapPin, Building2, X, Images } from 'lucide-react';
+import { useFirestoreDoc } from '@/lib/hooks/useFirestoreDoc';
 import { useToast } from '@/lib/hooks/useToast';
 import { Project, SchemaField, PropertyType, ProjectStatus, PROPERTY_TYPES, PROJECT_STATUSES, DEFAULT_SCHEMA_FIELDS } from '@/lib/types/project';
 import { Button } from '@/components/ui/Button';
@@ -13,6 +14,8 @@ import { MultiImageUpload } from '@/components/ui/MultiImageUpload';
 import { LocationAutocomplete } from '@/components/ui/LocationAutocomplete';
 import { ImageLightbox } from '@/components/ui/ImageLightbox';
 import { geocodeAddress } from '@/lib/utils/geocode';
+import { BestBuyersPanel } from '@/components/projects/BestBuyersPanel';
+import { buildBestBuyerCallListCsv, ReverseMatchProjectSnapshot } from '@/lib/utils/reverseMatcher';
 
 interface ProjectOverviewTabProps {
   project: Project;
@@ -27,6 +30,10 @@ const STATUS_BADGE: Record<string, 'success' | 'warning' | 'danger'> = {
 
 export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps) {
   const { showToast } = useToast();
+  const { data: reverseSnapshot } = useFirestoreDoc<ReverseMatchProjectSnapshot & { id: string }>(
+    'reverse_match_projects',
+    project.id,
+  );
 
   // Edit mode for project info
   const [editingInfo, setEditingInfo] = useState(false);
@@ -102,6 +109,26 @@ export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps
     () => schema.filter(f => f.scope === 'project'),
     [schema],
   );
+  const bestBuyers = reverseSnapshot?.buyers || [];
+
+  const handleExportCallList = () => {
+    if (bestBuyers.length === 0) {
+      showToast('error', 'No best buyers available to export yet.');
+      return;
+    }
+
+    const csv = buildBestBuyerCallListCsv(project.name, bestBuyers);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-best-buyers.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast('success', 'Best buyers call list exported.');
+  };
 
   const handleSaveInfo = async () => {
     if (!formName.trim() || !formBuilder.trim() || !formLocation.trim()) {
@@ -207,7 +234,7 @@ export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps
           dark backdrop frames portrait/landscape shots without cropping or stretching. */}
       {!editingInfo && project.heroImage && (
         <div
-          className="relative w-full aspect-[16/9] max-h-[420px] rounded-xl overflow-hidden cursor-pointer bg-mn-surface group"
+          className="app-shell-panel relative w-full aspect-[16/9] max-h-[420px] cursor-pointer overflow-hidden rounded-[1.5rem] group"
           onClick={() => openLightbox(0)}
         >
           <img
@@ -220,11 +247,14 @@ export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps
       )}
 
       {/* Project Info Section */}
-      <div className="bg-mn-card border border-mn-border/30 rounded-xl p-6">
+      <div className="app-shell-panel rounded-[1.5rem] p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-black text-mn-h3 uppercase tracking-wider">Project Info</h3>
+          <div>
+            <p className="section-heading">Overview</p>
+            <h3 className="mt-2 text-sm font-black text-mn-h3 uppercase tracking-wider">Project Info</h3>
+          </div>
           {isAdmin && !editingInfo && (
-            <button onClick={() => setEditingInfo(true)} className="flex items-center gap-1.5 text-xs font-bold text-mn-h2 hover:text-mn-h2/80">
+            <button onClick={() => setEditingInfo(true)} className="flex items-center gap-1.5 rounded-xl border border-mn-border/20 px-3 py-2 text-xs font-bold text-mn-h2 transition-colors hover:border-mn-h2/30 hover:bg-mn-h2/8">
               <Pencil className="w-3.5 h-3.5" /> Edit
             </button>
           )}
@@ -267,7 +297,7 @@ export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps
 
       {/* Gallery Section — proper grid, not tile strip */}
       {!editingInfo && allImages.length > 1 && (
-        <div className="bg-mn-card border border-mn-border/30 rounded-xl p-6">
+        <div className="app-shell-panel rounded-[1.5rem] p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Images className="w-4 h-4 text-mn-h3" />
@@ -302,16 +332,25 @@ export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps
         </div>
       )}
 
+      <BestBuyersPanel
+        title="Best Buyers"
+        subtitle={`Server-ranked buyers for ${project.name}, using match fit, urgency, recency, engagement, and sales stage.`}
+        buyers={bestBuyers}
+        emptyText={(reverseSnapshot?.inventoryCount || 0) === 0 ? 'No available inventory in this project yet, so reverse matching has nothing to rank.' : 'No active leads currently fit this project strongly enough to show as best buyers.'}
+        onExport={handleExportCallList}
+      />
+
       {/* Project-Level Fields Section */}
       {!schemaLoading && projectScopedFields.length > 0 && (
-        <div className="bg-mn-card border border-mn-border/30 rounded-xl p-6">
+        <div className="app-shell-panel rounded-[1.5rem] p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-sm font-black text-mn-h3 uppercase tracking-wider">Project-Level Details</h3>
+              <p className="section-heading">Structured data</p>
+              <h3 className="mt-2 text-sm font-black text-mn-h3 uppercase tracking-wider">Project-Level Details</h3>
               <p className="text-[10px] text-mn-text-muted mt-0.5">These values apply to all units in this project</p>
             </div>
             {isAdmin && !editingFields && (
-              <button onClick={() => setEditingFields(true)} className="flex items-center gap-1.5 text-xs font-bold text-mn-h2 hover:text-mn-h2/80">
+              <button onClick={() => setEditingFields(true)} className="flex items-center gap-1.5 rounded-xl border border-mn-border/20 px-3 py-2 text-xs font-bold text-mn-h2 transition-colors hover:border-mn-h2/30 hover:bg-mn-h2/8">
                 <Pencil className="w-3.5 h-3.5" /> Edit
               </button>
             )}

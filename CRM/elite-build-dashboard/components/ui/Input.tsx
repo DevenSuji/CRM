@@ -9,13 +9,13 @@ export function Input({ label, error, className = '', ...props }: InputProps) {
   return (
     <div>
       {label && (
-        <label className="block text-[10px] font-black text-mn-h3 uppercase tracking-wider mb-1.5">
+        <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-mn-text-muted">
           {label}
           {props.required && <span className="text-mn-danger ml-0.5">*</span>}
         </label>
       )}
       <input
-        className={`w-full px-4 py-2.5 bg-mn-input-bg border border-mn-input-border rounded-xl text-sm text-mn-text placeholder:text-mn-text-muted/50 focus:outline-none focus:border-mn-input-focus focus:ring-1 focus:ring-mn-input-focus/30 transition-colors ${className}`}
+        className={`min-h-11 w-full rounded-2xl border border-mn-input-border bg-mn-input-bg px-4 py-2.5 text-sm font-medium text-mn-text shadow-sm transition-all placeholder:text-mn-text-muted/50 focus:border-mn-input-focus focus:outline-none focus:ring-4 focus:ring-mn-ring ${className}`}
         {...props}
       />
       {error && <p className="text-xs text-mn-danger mt-1">{error}</p>}

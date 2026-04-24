@@ -11,8 +11,8 @@ export function Card({ children, className = '', hover = false, onClick }: CardP
   return (
     <div
       onClick={onClick}
-      className={`bg-mn-card border border-mn-border rounded-2xl ${
-        hover ? 'hover:bg-mn-card-hover hover:border-mn-input-focus transition-all cursor-pointer' : ''
+      className={`app-shell-panel rounded-[var(--mn-radius-card)] ${
+        hover ? 'hover:-translate-y-0.5 hover:bg-mn-card-hover hover:border-mn-input-focus/40 hover:shadow-[var(--mn-shadow)] transition-all cursor-pointer' : ''
       } ${onClick ? 'cursor-pointer' : ''} ${className}`}
     >
       {children}

@@ -6,7 +6,7 @@ import {
   collection, addDoc, deleteDoc, doc, updateDoc, Timestamp, orderBy,
 } from 'firebase/firestore';
 import { geocodeAddress } from '@/lib/utils/geocode';
-import { Plus, Trash2, LayoutGrid, Database, Boxes, Megaphone } from 'lucide-react';
+import { Trash2, LayoutGrid, Database, Boxes, Megaphone } from 'lucide-react';
 import { useFirestoreCollection } from '@/lib/hooks/useFirestoreCollection';
 import { useToast } from '@/lib/hooks/useToast';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -153,8 +153,7 @@ export default function UnifiedProjectsPage() {
     <div className="h-full flex flex-col overflow-hidden">
       <PageHeader title="Projects" subtitle={`${projects.length} projects`} />
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
+      <div className="flex flex-1 flex-col gap-4 overflow-hidden pt-4 md:flex-row">
         <ProjectSidebar
           projects={projects}
           selectedId={currentProject?.id || null}
@@ -164,43 +163,42 @@ export default function UnifiedProjectsPage() {
           loading={loading}
         />
 
-        {/* Right Detail Area */}
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {!currentProject ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center">
+            <div className="app-shell-panel flex flex-1 flex-col items-center justify-center text-center">
               <Boxes className="w-16 h-16 text-mn-border mb-4" />
               <p className="font-bold text-lg text-mn-text-muted">Select a project to view details</p>
               <p className="text-xs text-mn-text-muted/60 mt-1">Or create a new one to get started</p>
             </div>
           ) : (
             <>
-              {/* Project Header + Tabs */}
-              <div className="border-b border-mn-border/30 px-6 pt-4 pb-0">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h2 className="font-black text-lg text-mn-h1">{currentProject.name}</h2>
-                    <p className="text-xs text-mn-text-muted">{currentProject.builder} · {currentProject.location}</p>
+              <div className="app-shell-panel px-4 pb-0 pt-4 sm:px-6">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="section-heading">Project workspace</p>
+                    <h2 className="mt-2 text-xl font-black text-mn-h1">{currentProject.name}</h2>
+                    <p className="mt-1 text-xs text-mn-text-muted">{currentProject.builder} · {currentProject.location}</p>
                   </div>
                   {canEditCore && (
                     <button
                       onClick={() => setDeleteConfirm(currentProject)}
-                      className="flex items-center gap-1.5 text-xs font-bold text-mn-danger/60 hover:text-mn-danger transition-colors"
+                      className="flex items-center gap-1.5 rounded-xl border border-mn-danger/20 px-3 py-2 text-xs font-bold text-mn-danger/70 transition-colors hover:border-mn-danger/35 hover:bg-mn-danger/8 hover:text-mn-danger"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> Delete
                     </button>
                   )}
                 </div>
-                <div className="flex gap-1">
+                <div className="mn-segmented flex gap-1 overflow-x-auto rounded-[1.2rem] p-1.5">
                   {DETAIL_TABS.map(tab => {
                     const Icon = tab.icon;
                     return (
                       <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
+                          className={`flex flex-shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
                           activeTab === tab.id
-                            ? 'border-mn-h2 text-mn-h2 bg-mn-h2/5'
-                            : 'border-transparent text-mn-text-muted hover:text-mn-text hover:bg-mn-card/50'
+                            ? 'mn-segmented-active'
+                            : 'mn-segmented-idle'
                         }`}
                       >
                         <Icon className="w-4 h-4" />
@@ -211,8 +209,7 @@ export default function UnifiedProjectsPage() {
                 </div>
               </div>
 
-              {/* Tab Content */}
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex-1 overflow-y-auto px-1 py-4 sm:px-2 sm:py-6">
                 {activeTab === 'overview' && canEditCore && (
                   <ProjectOverviewTab project={currentProject} isAdmin={canEditCore} />
                 )}

@@ -57,7 +57,7 @@ function ChannelPartnerView({ uid }: { uid: string }) {
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-8 py-6 pb-12">
+        <div className="flex-1 overflow-y-auto px-4 py-6 pb-12 sm:px-8">
           <ChannelPartnerDashboard leads={myLeads} />
         </div>
       )}
@@ -93,8 +93,8 @@ function TeamView({ currentUid }: { currentUid?: string }) {
         }
       />
 
-      {/* Tabs */}
-      <div className="px-8 pt-4 flex gap-1 border-b border-mn-border/40">
+      <div className="px-4 pt-4 sm:px-8">
+        <div className="mn-segmented flex gap-1 overflow-x-auto px-2 py-2">
         {TABS.map(tab => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -102,10 +102,10 @@ function TeamView({ currentUid }: { currentUid?: string }) {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-bold rounded-t-xl transition-all ${
+              className={`flex flex-shrink-0 items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition-all ${
                 active
-                  ? 'bg-mn-card border border-mn-border border-b-mn-card text-mn-h2 -mb-px'
-                  : 'text-mn-text-muted hover:text-mn-text hover:bg-mn-card/40'
+                  ? 'mn-segmented-active'
+                  : 'mn-segmented-idle'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -113,6 +113,7 @@ function TeamView({ currentUid }: { currentUid?: string }) {
             </button>
           );
         })}
+        </div>
       </div>
 
       {/* Content */}
@@ -124,12 +125,17 @@ function TeamView({ currentUid }: { currentUid?: string }) {
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-8 py-6 pb-12">
+        <div className="flex-1 overflow-y-auto px-4 py-6 pb-12 sm:px-8">
           {activeTab === 'marketing' && (
             <MarketingDashboard leads={leads} marketingTeams={marketingTeams} />
           )}
           {activeTab === 'internal' && (
-            <InternalDashboard leads={leads} users={users} currentUid={currentUid} />
+            <InternalDashboard
+              leads={leads}
+              users={users}
+              currentUid={currentUid}
+              showDemandGap={crmUser?.role === 'admin' || crmUser?.role === 'superadmin'}
+            />
           )}
         </div>
       )}

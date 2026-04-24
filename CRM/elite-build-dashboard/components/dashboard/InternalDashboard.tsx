@@ -1,13 +1,16 @@
 "use client";
 import { useState, useMemo } from 'react';
+import { useFirestoreDoc } from '@/lib/hooks/useFirestoreDoc';
 import { Lead } from '@/lib/types/lead';
 import { CRMUser } from '@/lib/types/user';
+import { DemandGapReport as DemandGapReportType } from '@/lib/types/intelligence';
 import { computeInternalMetrics, computeLeaderboard, computeTimeSeries, TimePeriod } from '@/lib/utils/dashboardMetrics';
 import { formatPrice } from '@/lib/utils/formatPrice';
 import { MetricCard } from './MetricCard';
 import { FunnelChart } from './FunnelChart';
 import { Leaderboard } from './Leaderboard';
 import { PipelineTrendChart, LeadsConversionsChart, CallsTrendChart } from './AnimatedCharts';
+import { DemandGapReport } from './DemandGapReport';
 import {
   Zap, MapPin, Bookmark, IndianRupee, TrendingUp, Clock,
   AlertTriangle, Phone, Timer, BarChart3,
@@ -24,11 +27,16 @@ interface Props {
   leads: Lead[];
   users: CRMUser[];
   currentUid?: string;
+  showDemandGap?: boolean;
 }
 
-export function InternalDashboard({ leads, users, currentUid }: Props) {
+export function InternalDashboard({ leads, users, currentUid, showDemandGap = false }: Props) {
   const [selectedUid, setSelectedUid] = useState<string>('');
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('weekly');
+  const { data: demandGapReport } = useFirestoreDoc<DemandGapReportType & { id: string }>(
+    'demand_gap_reports',
+    showDemandGap ? 'current' : '',
+  );
 
   const salesUsers = useMemo(() =>
     users.filter(u => u.active && u.role !== 'viewer'),
@@ -50,13 +58,13 @@ export function InternalDashboard({ leads, users, currentUid }: Props) {
   return (
     <div className="space-y-6">
       {/* Filters */}
-      <div className="flex items-center gap-4 flex-wrap">
+      <div className="app-shell-panel flex flex-wrap items-center gap-4 p-4">
         <div className="flex items-center gap-3">
           <label className="text-xs font-black text-mn-text-muted uppercase tracking-wider">View:</label>
           <select
             value={selectedUid}
             onChange={e => setSelectedUid(e.target.value)}
-            className="px-3 py-2 bg-mn-input-bg border border-mn-input-border rounded-xl text-sm font-bold text-mn-text focus:outline-none focus:border-mn-input-focus"
+            className="rounded-xl border border-mn-input-border bg-mn-input-bg px-3 py-2 text-sm font-bold text-mn-text focus:outline-none focus:border-mn-input-focus"
           >
             <option value="">All Team</option>
             {salesUsers.map(u => (
@@ -68,7 +76,7 @@ export function InternalDashboard({ leads, users, currentUid }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <BarChart3 className="w-3.5 h-3.5 text-mn-text-muted" />
-          <div className="flex bg-mn-input-bg border border-mn-input-border rounded-xl overflow-hidden">
+          <div className="flex overflow-hidden rounded-xl border border-mn-input-border bg-mn-input-bg">
             {PERIOD_OPTIONS.map(opt => (
               <button
                 key={opt.value}
@@ -166,7 +174,7 @@ export function InternalDashboard({ leads, users, currentUid }: Props) {
       {metrics.agingLeads.length > 0 && (
         <div>
           <h2 className="text-sm font-black text-mn-h2 uppercase tracking-wider mb-4">Aging Leads</h2>
-          <div className="bg-mn-card border border-mn-border rounded-2xl shadow-sm overflow-hidden">
+          <div className="app-shell-panel overflow-hidden">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-mn-border/40">
@@ -195,6 +203,10 @@ export function InternalDashboard({ leads, users, currentUid }: Props) {
             </table>
           </div>
         </div>
+      )}
+
+      {showDemandGap && isTeamView && (
+        <DemandGapReport report={demandGapReport} />
       )}
 
       {/* Funnel */}

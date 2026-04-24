@@ -68,18 +68,18 @@ export default function AdminConsolePage() {
     <div className="h-full flex flex-col overflow-hidden">
       <PageHeader title="Admin Console" subtitle="System configuration" />
 
-      {/* Tabs — horizontally scrollable on narrow viewports so all seven fit on mobile */}
-      <div className="flex items-center gap-1 px-4 md:px-8 py-3 border-b border-mn-border/30 overflow-x-auto whitespace-nowrap">
+      <div className="px-4 py-4 md:px-8">
+        <div className="mn-segmented flex items-center gap-1 overflow-x-auto whitespace-nowrap px-2 py-2">
         {TABS.map(tab => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all flex-shrink-0 ${
+              className={`flex flex-shrink-0 items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-bold transition-all ${
                 activeTab === tab.id
-                  ? 'bg-mn-h2/15 text-mn-h2'
-                  : 'text-mn-text-muted hover:text-mn-text hover:bg-mn-card/50'
+                  ? 'mn-segmented-active'
+                  : 'mn-segmented-idle'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -87,6 +87,7 @@ export default function AdminConsolePage() {
             </button>
           );
         })}
+        </div>
       </div>
 
       {/* Tab Content */}
@@ -177,11 +178,13 @@ function KanbanLanesTab() {
   if (loading) return <div className="p-8 text-mn-text-muted">Loading...</div>;
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="mx-auto max-w-3xl p-6 md:p-8">
+      <div className="app-shell-panel p-5 md:p-6">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-black text-mn-h1">Kanban Swim Lanes</h2>
-          <p className="text-xs text-mn-text-muted mt-0.5">Configure the stages of your lead pipeline</p>
+          <p className="section-heading">Pipeline setup</p>
+          <h2 className="mt-2 text-lg font-black text-mn-h1">Kanban Swim Lanes</h2>
+          <p className="mt-0.5 text-xs text-mn-text-muted">Configure the stages of your lead pipeline</p>
         </div>
         <Button onClick={handleSave} disabled={saving} icon={<Save className="w-4 h-4" />}>
           {saving ? 'Saving...' : 'Save Lanes'}
@@ -190,7 +193,7 @@ function KanbanLanesTab() {
 
       <div className="space-y-3">
         {lanes.map((lane, idx) => (
-          <div key={lane.id} className="flex items-center gap-3 p-4 bg-mn-card border border-mn-border/30 rounded-xl group hover:border-mn-border transition-all">
+          <div key={lane.id} className="group flex items-center gap-3 rounded-[1.35rem] border border-white/45 bg-[linear-gradient(180deg,rgba(255,255,255,0.8),rgba(255,255,255,0.68))] p-4 transition-all hover:border-mn-border dark:bg-[linear-gradient(180deg,rgba(13,26,22,0.92),rgba(11,24,20,0.82))]">
             <GripVertical className="w-4 h-4 text-mn-text-muted/30 group-hover:text-mn-text-muted cursor-grab flex-shrink-0" />
             <input
               value={lane.emoji || ''}
@@ -203,7 +206,7 @@ function KanbanLanesTab() {
               type="color"
               value={lane.color}
               onChange={e => updateLane(idx, { color: e.target.value })}
-              className="w-8 h-8 rounded-lg border border-mn-border cursor-pointer bg-transparent flex-shrink-0"
+              className="h-8 w-8 flex-shrink-0 cursor-pointer rounded-lg border border-mn-border bg-transparent"
             />
             <input
               value={lane.label}
@@ -221,10 +224,11 @@ function KanbanLanesTab() {
 
       <button
         onClick={addLane}
-        className="mt-4 w-full p-4 border-2 border-dashed border-mn-border rounded-xl text-mn-text-muted hover:border-mn-h2 hover:text-mn-h2 font-bold text-sm transition-all flex items-center justify-center gap-2"
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-[1.35rem] border-2 border-dashed border-mn-border p-4 text-sm font-bold text-mn-text-muted transition-all hover:border-mn-h2 hover:text-mn-h2"
       >
         <Plus className="w-4 h-4" /> Add Lane
       </button>
+      </div>
     </div>
   );
 }
