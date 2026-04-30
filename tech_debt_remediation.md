@@ -423,6 +423,35 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Live smoke:
   - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium smoke tests.
 
+### 2026-04-30 21:27 IST - DEP-002 Wire Vitest Coverage Script
+
+- Action: Added an explicit `npm run test:coverage` script for the existing Vitest V8 coverage dependency and documented it in the validation command list.
+- Reason: `@vitest/coverage-v8` was installed and working, but there was no named coverage command. Keeping the dependency is correct because the CRM already has active unit coverage and the coverage run passed.
+- Evidence collected:
+  - `package.json` already had active `test` and `test:watch` scripts using `vitest.config.ts`.
+  - `rg --files CRM/elite-build-dashboard | rg '(^|/)(vitest|.*\\.test\\.|.*\\.spec\\.|tests/|__tests__/|coverage)'` found active unit and rules tests plus `vitest.config.ts` and `vitest.rules.config.ts`.
+  - `npm run test -- --coverage` passed before the edit: 25 unit test files, 453 tests, V8 coverage summary generated.
+- Files changed:
+  - `CRM/elite-build-dashboard/package.json`
+  - `README.md`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - None. Test tooling and documentation only.
+- Validation:
+  - `npm run test:coverage` passed: 25 unit test files, 453 tests, V8 coverage summary generated.
+  - `npx tsc --noEmit` passed.
+  - `npm run lint` passed with the existing 51 warnings and 0 errors.
+  - `npm run test:smoke` passed locally: 2 Chromium smoke tests.
+  - `git diff --check -- CRM/elite-build-dashboard/package.json README.md tech_debt_remediation.md` passed.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+- Dev deploy:
+  - Pending.
+- Live smoke:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -629,17 +658,17 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 
 ### DEP-002 - Vitest Coverage Package Installed But Not Wired
 
-- Status: `Needs Investigation`
+- Status: `Refactored`
 - Type: dependency/tooling debt
 - Evidence collected:
   - `package.json` lists `@vitest/coverage-v8` in `devDependencies`.
   - `rg -n "@vitest/coverage-v8|coverage-v8" CRM/elite-build-dashboard --glob '!node_modules/**' --glob '!.next/**'` found only `package.json` and `package-lock.json`.
   - Current scripts are `test`, `test:watch`, `test:rules`, and `test:all`; no coverage script is present.
 - Current decision:
-  - Do not remove now. It may be useful for the upcoming production-quality gate, but it is not currently active.
-  - Decide whether to add a coverage script or remove the dependency in a separate tooling pass.
+  - Do not remove. The dependency is valid because the app has active unit tests and V8 coverage runs successfully.
+  - Added `npm run test:coverage` as the explicit coverage command.
 - Risk:
-  - Low-medium. This is build-tooling only, but dependency churn before deployment should be deliberate.
+  - Low. This is build-tooling and documentation only; no runtime code changed.
 
 ### SCRIPT-001 - Dangerous Cleanup Scripts Under `functions/`
 

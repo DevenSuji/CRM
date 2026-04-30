@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run --config vitest.config.ts",
+    "test:coverage": "vitest run --config vitest.config.ts --coverage",
     "test:watch": "vitest --config vitest.config.ts",
     "test:smoke": "playwright test --config=playwright.config.ts",
     "test:smoke:headed": "playwright test --config=playwright.config.ts --headed",
