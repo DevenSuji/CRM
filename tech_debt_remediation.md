@@ -349,9 +349,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `git diff --check -- README.md` passed before this ledger entry.
   - `git diff --check -- README.md tech_debt_remediation.md` passed.
 - Commit:
-  - Pending.
+  - `adb3a7c docs: refresh CRM README for current dev baseline`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
