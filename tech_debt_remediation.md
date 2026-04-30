@@ -161,9 +161,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `npx tsc --noEmit` passed.
   - `git diff --check -- tech_debt_remediation.md CRM/elite-build-dashboard/components/CallbackAlarmOverlay.tsx` passed.
 - Commit:
-  - Pending.
+  - `39fd94f chore: remove unused callback alarm symbols`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
