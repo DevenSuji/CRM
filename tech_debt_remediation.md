@@ -235,9 +235,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `git diff --cached --check`
   - Review staged status and staged stat output.
 - Commit:
-  - Pending.
+  - `09ade22 chore: checkpoint current CRM dev baseline`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
