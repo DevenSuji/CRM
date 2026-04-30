@@ -290,6 +290,40 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
 
+### 2026-04-30 20:22 IST - SCRIPT-001 Harden Dangerous Cleanup Scripts
+
+- Action: Added explicit safety guards to the manual cleanup scripts under `CRM/functions/`.
+- Reason: These scripts can delete lead/inventory data and previously hardcoded an old project ID. They should be impossible to run destructively by accident.
+- Evidence:
+  - `git status --short` returned clean before the change.
+  - `CRM/functions/inventory_cleanup/cleanup_inventory.py` previously initialized `firestore.Client(project="elitebuild-crm")` at import time and deleted every `inventory` document when run.
+  - `CRM/functions/lead_cleanup/cleanup_lead.py` previously initialized `firestore.Client(project="elitebuild-crm")` at import time, deleted every `leads` document, and updated every `inventory` document when run.
+  - `CRM/elite-build-dashboard/firebase.json` still has no Cloud Functions deploy configuration for these directories, so this is a manual-script safety change, not an app runtime deployment change.
+- Changes made:
+  - Removed the hardcoded Firestore project ID from both scripts.
+  - Required `--project-id` on every run so the target project must be explicit.
+  - Made both scripts dry-run by default.
+  - Required `--execute` before any destructive write.
+  - Required `ELITEBUILD_ALLOW_DANGEROUS_CLEANUP="I_UNDERSTAND_THIS_DELETES_DATA"` before any destructive write.
+  - Required exact typed confirmation of the target project before any destructive write.
+  - Deferred Firestore client creation until after argument parsing and destructive confirmation.
+- Files changed:
+  - `CRM/functions/inventory_cleanup/cleanup_inventory.py`
+  - `CRM/functions/lead_cleanup/cleanup_lead.py`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - No CRM app runtime impact expected. These are manual utilities and were not executed.
+- Validation:
+  - In-memory Python syntax compile passed for both scripts.
+  - `rg -n "elitebuild-crm|firestore\\.Client\\(project=\\\"" CRM/functions/inventory_cleanup/cleanup_inventory.py CRM/functions/lead_cleanup/cleanup_lead.py` found no hardcoded project target.
+  - `find CRM/functions -path '*/__pycache__' -o -name '*.pyc' -o -name '*.pyo'` returned no generated Python cache files.
+  - `git diff --check -- CRM/functions/inventory_cleanup/cleanup_inventory.py CRM/functions/lead_cleanup/cleanup_lead.py` passed.
+  - These cleanup scripts were intentionally not executed.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -510,7 +544,7 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 
 ### SCRIPT-001 - Dangerous Cleanup Scripts Under `functions/`
 
-- Status: `Needs Investigation`
+- Status: `Refactored`
 - Type: script organization/safety debt
 - Evidence collected:
   - `CRM/functions/inventory_cleanup/cleanup_inventory.py` deletes every document in the `inventory` collection.
@@ -521,9 +555,10 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `docs/CRM_Mind_Map_A0.html` references them as manual cleanup scripts.
 - Current decision:
   - Do not delete or move yet. They are dangerous but documented, and deletion could remove historical recovery/cleanup context.
-  - Candidate follow-up: quarantine under a clearly named `CRM/scripts/dangerous_manual_cleanup/` folder, add explicit environment/project guards, or remove after user approval.
+  - Safety guardrails have been added so destructive execution requires explicit project targeting, `--execute`, an environment confirmation phrase, and exact typed confirmation.
+  - Candidate follow-up: quarantine under a clearly named `CRM/scripts/dangerous_manual_cleanup/` folder or remove after user approval.
 - Risk:
-  - High if run accidentally. Any remediation must be tiny, reviewed, and validated by static inspection rather than execution.
+  - Lower than before because accidental destructive execution now fails closed, but still high if intentionally executed against the wrong project.
 
 ### DOC-003 - Root README Is Stale Against Current App Shape
 
