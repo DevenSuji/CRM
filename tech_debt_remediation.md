@@ -113,3 +113,49 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - Confirm no `.pyc` files remain under the repo working tree.
   - Run the Python unit test for `lead_ingestion_webhook` if local Python dependencies allow it.
   - Run `git diff --check` for touched files.
+
+### AUD-001 - Empty Local Directories
+
+- Status: `Needs Investigation`
+- Type: local filesystem cleanup
+- Evidence collected:
+  - `find . -path './.git' -prune -o -type d -empty -print | sort` found:
+    - `CRM/elite-build-dashboard/app/admin/projects`
+    - `CRM/elite-build-dashboard/app/inventory`
+    - `CRM/elite-build-dashboard/lib/constants`
+    - `terraform`
+    - ignored backup-git internals under `docs/elite-build-dashboard_inner_git_backup_2026-04-21/`
+  - Empty directories are not represented in git unless they contain tracked placeholder files, so these currently do not affect committed source.
+- Current decision:
+  - Do not remove yet during source-remediation commits because there is no git delta to review/push.
+  - Revisit if we create Terraform under `terraform/` or decide to clean local-only folders.
+- Risk:
+  - Low for local cleanup, but no production benefit right now.
+
+### DOC-001 - Historical Transcript / Long-Form Notes
+
+- Status: `Needs Investigation`
+- Type: documentation/archive cleanup
+- Evidence collected:
+  - Candidate files found by audit query:
+    - `history/CRM.txt`
+    - `docs/StepsSoFar.txt`
+  - These look like historical transcripts or long-form process notes, but they may contain project decisions, setup history, or recovery breadcrumbs.
+- Current decision:
+  - Do not delete before confirming with project history needs.
+  - If retained, consider moving them under a clearly named `docs/archive/` path instead of deleting.
+- Risk:
+  - Medium. Deleting project history can remove deployment/setup context even if it has no runtime impact.
+
+### CODE-001 - Legacy Browser Auth Resolver
+
+- Status: `Needs Investigation`
+- Type: possible legacy code
+- Evidence collected:
+  - Runtime `AuthContext` uses `/api/auth/resolve-crm-user`.
+  - `lib/auth/resolveCrmUser.ts` is still imported by `tests/rules/resolveCrmUser.test.ts`.
+  - The file encodes legacy browser-side auth resolution behavior that now overlaps with the server route.
+- Current decision:
+  - Do not remove now. It still has test coverage attached, and deleting it safely requires either migrating those tests to the server route or explicitly retiring the legacy behavior.
+- Risk:
+  - Medium-high. Auth bootstrap and pending-user migration are sensitive paths.
