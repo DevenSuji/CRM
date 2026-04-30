@@ -264,9 +264,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Validation:
   - `git diff --check -- tech_debt_remediation.md` passed.
 - Commit:
-  - Pending.
+  - `79cb60d docs: record tech debt discovery pass`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
