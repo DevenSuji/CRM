@@ -19,6 +19,7 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
    - deploy the pushed branch to the dev GCP Cloud Run service with the guarded deploy script,
    - run live CRM smoke tests against the dev Cloud Run URL,
    - record the deployed revision and live test result here.
+   - Deployment-result ledger checkpoint commits are pushed after the deploy and are not redeployed by themselves, otherwise recording the latest revision would create an infinite deploy loop. They are included in the next substantive deploy.
 7. If confidence is below 100%, mark the item as `Needs Investigation` and do not change it.
 8. Runtime-generated files, build artifacts, cache files, and historical transcripts must still be checked for references before deletion.
 
@@ -411,13 +412,16 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Validation:
   - `git diff --check -- tech_debt_remediation.md` passed.
 - Commit:
-  - Pending.
+  - `48156e9 docs: require dev deploy after tech debt changes`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 - Dev deploy:
-  - Pending.
+  - `npm run deploy:dev:dry-run` passed.
+  - `npm run deploy:dev` passed.
+  - Cloud Run revision `elite-build-crm-dev-00031-qik` was promoted to 100% traffic.
+  - Service URL: `https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app`.
 - Live smoke:
-  - Pending.
+  - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium smoke tests.
 
 ## Findings Register
 
