@@ -80,12 +80,12 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `python3 -m compileall -q CRM/functions/lead_ingestion_webhook/main.py CRM/functions/lead_ingestion_webhook/test_source_normalization.py` passed.
   - `cd CRM/functions/lead_ingestion_webhook && python3 test_source_normalization.py` passed: 2 tests.
   - Regenerated `__pycache__/` files from validation were removed again.
-  - Final `find CRM/functions/lead_ingestion_webhook \( -path '*/__pycache__' -o -name '*.pyc' -o -name '*.pyo' \) -print` expected to return no files before commit.
-  - `git diff --check` pending before commit.
+  - Final `find CRM/functions/lead_ingestion_webhook \( -path '*/__pycache__' -o -name '*.pyc' -o -name '*.pyo' \) -print` returned no files.
+  - `git diff --check -- .gitignore tech_debt_remediation.md CRM/functions/lead_ingestion_webhook/__pycache__/main.cpython-313.pyc` passed.
 - Commit:
-  - Pending.
+  - `5f629a6 chore: remove generated Python bytecode cache`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
