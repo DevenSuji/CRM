@@ -15,7 +15,10 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
    - record the action here,
    - run the smallest meaningful validation,
    - commit only the intended files,
-   - push the branch.
+   - push the branch,
+   - deploy the pushed branch to the dev GCP Cloud Run service with the guarded deploy script,
+   - run live CRM smoke tests against the dev Cloud Run URL,
+   - record the deployed revision and live test result here.
 7. If confidence is below 100%, mark the item as `Needs Investigation` and do not change it.
 8. Runtime-generated files, build artifacts, cache files, and historical transcripts must still be checked for references before deletion.
 
@@ -389,6 +392,32 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `6942a7a test: add unauthenticated Playwright smoke checks`
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
+
+### 2026-04-30 21:01 IST - Deployment Rule Added For Tech-Debt Changes
+
+- Action: Updated the operating rules so every tech-debt change must be pushed to GitHub, deployed to dev GCP Cloud Run, and smoke-tested live.
+- Reason: The CRM should not drift between GitHub and the running dev environment during production-readiness work.
+- New required sequence after each validated tech-debt change:
+  - Commit only intended files.
+  - Push to `origin/codex/ui-modernization-20260424`.
+  - Run `npm run deploy:dev:dry-run`.
+  - Run `npm run deploy:dev`.
+  - Run live CRM smoke tests against the Cloud Run URL.
+  - Record the Cloud Run revision and live test outcome in this ledger.
+- Files changed:
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - None from the ledger edit itself. A dev Cloud Run deployment will be performed immediately after this commit/push so the running CRM catches up to the current branch.
+- Validation:
+  - `git diff --check -- tech_debt_remediation.md` passed.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+- Dev deploy:
+  - Pending.
+- Live smoke:
+  - Pending.
 
 ## Findings Register
 
