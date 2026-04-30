@@ -386,9 +386,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `git diff --check -- CRM/elite-build-dashboard/.gitignore CRM/elite-build-dashboard/package.json CRM/elite-build-dashboard/playwright.config.ts CRM/elite-build-dashboard/tests/smoke/unauthenticated.spec.ts README.md` passed before this ledger entry.
   - `git diff --check` passed.
 - Commit:
-  - Pending.
+  - `6942a7a test: add unauthenticated Playwright smoke checks`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
