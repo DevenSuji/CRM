@@ -320,9 +320,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `git diff --check -- CRM/functions/inventory_cleanup/cleanup_inventory.py CRM/functions/lead_cleanup/cleanup_lead.py` passed.
   - These cleanup scripts were intentionally not executed.
 - Commit:
-  - Pending.
+  - `206cf0a chore: harden manual cleanup scripts`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
