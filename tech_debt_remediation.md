@@ -110,9 +110,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - Final `find . ... -name '.DS_Store' ... -name 'firestore-debug.log'` returned no files.
   - `git diff --check -- tech_debt_remediation.md` passed.
 - Commit:
-  - Pending.
+  - `f766fc1 docs: record local artifact cleanup`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
