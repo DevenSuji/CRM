@@ -353,6 +353,43 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
 
+### 2026-04-30 20:51 IST - DEP-001 Add Playwright Smoke Harness
+
+- Action: Wired the existing Playwright dependency into a minimal unauthenticated smoke-test harness.
+- Reason: Playwright was installed but unused. Before further auth/role-view cleanup, the CRM needs a browser-level harness that can catch login/guard regressions quickly.
+- Evidence:
+  - `package.json` already listed `playwright`.
+  - `node_modules/@playwright/test` is not installed, but `playwright/test` resolves from the installed `playwright` package.
+  - `npx playwright test --version` returned `Version 1.59.1`.
+  - Local Next CLI docs at `node_modules/next/dist/docs/01-app/03-api-reference/06-cli/next.md` confirm `npm run` requires `--` before forwarded `next dev` flags and that `--port` / `--hostname` are valid.
+- Changes made:
+  - Added `test:smoke` and `test:smoke:headed` scripts.
+  - Added `playwright.config.ts` with a local `next dev` web server on `127.0.0.1:3100`, overridable by `PLAYWRIGHT_BASE_URL`.
+  - Added `tests/smoke/unauthenticated.spec.ts`.
+  - Smoke tests verify `/login` renders and protected routes (`/`, `/dashboard`, `/tasks`, `/projects`, `/whatsapp`, `/admin`) redirect unauthenticated users to `/login`.
+  - Added `/playwright-report` and `/test-results` to the app `.gitignore`.
+  - Added `npm run test:smoke` to the README validation command list.
+- Files changed:
+  - `CRM/elite-build-dashboard/.gitignore`
+  - `CRM/elite-build-dashboard/package.json`
+  - `CRM/elite-build-dashboard/playwright.config.ts`
+  - `CRM/elite-build-dashboard/tests/smoke/unauthenticated.spec.ts`
+  - `README.md`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - None expected. Tooling and documentation only.
+- Validation:
+  - `npx tsc --noEmit` passed.
+  - `npm run test:smoke` passed: 2 Chromium smoke tests.
+  - `npm run lint` passed with the pre-existing 51 warnings and 0 errors.
+  - Generated `CRM/elite-build-dashboard/test-results` was removed locally after the smoke run.
+  - `git diff --check -- CRM/elite-build-dashboard/.gitignore CRM/elite-build-dashboard/package.json CRM/elite-build-dashboard/playwright.config.ts CRM/elite-build-dashboard/tests/smoke/unauthenticated.spec.ts README.md` passed before this ledger entry.
+  - `git diff --check` passed.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -545,17 +582,17 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 
 ### DEP-001 - Playwright Installed But Not Wired
 
-- Status: `Needs Investigation`
+- Status: `Refactored`
 - Type: dependency/tooling debt
 - Evidence collected:
   - `package.json` lists `playwright` in `devDependencies`.
   - `rg -n "playwright" CRM/elite-build-dashboard --glob '!node_modules/**' --glob '!.next/**'` found only `package.json` and `package-lock.json`.
   - No `playwright.config.*` file exists under `CRM/elite-build-dashboard`.
 - Current decision:
-  - Do not remove now. We have been using browser/UAT-style checks manually, and Playwright may still be intended for production-readiness smoke tests.
-  - Either add a real smoke-test script/config in a later QA pass or remove the dependency if we choose not to automate browser checks.
+  - Playwright is now wired into `npm run test:smoke` and `npm run test:smoke:headed`.
+  - Current scope is intentionally unauthenticated smoke only. Authenticated role-view UAT should be added later with controlled test users or seeded auth state.
 - Risk:
-  - Medium. Removing it could slow the planned role-view/browser UAT automation.
+  - Low runtime risk. Medium operational value because it provides the first browser-level regression harness.
 
 ### DEP-002 - Vitest Coverage Package Installed But Not Wired
 

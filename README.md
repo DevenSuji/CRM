@@ -173,6 +173,7 @@ Server secrets such as `GEMINI_API_KEY` and future WhatsApp secrets should come 
 cd CRM/elite-build-dashboard
 
 npm run test
+npm run test:smoke
 npm run test:rules
 npx tsc --noEmit
 npm run build
