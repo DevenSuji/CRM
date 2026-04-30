@@ -239,6 +239,35 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
 
+### 2026-04-30 20:09 IST - Audit-Only Tech Debt Discovery Pass 1
+
+- Action: Ran a reference and artifact discovery pass without editing runtime code.
+- Reason: Establish the next safe remediation candidates after the current dev baseline.
+- Evidence collected:
+  - `git status --short` returned clean before the audit.
+  - Generated artifact scan returned no `.DS_Store`, `firestore-debug.log`, `__pycache__`, `.pyc`, or `.pyo` files outside ignored dependency/build folders.
+  - Empty directory scan found local-only empty folders:
+    - `CRM/elite-build-dashboard/app/admin/projects`
+    - `CRM/elite-build-dashboard/app/inventory`
+    - `CRM/elite-build-dashboard/lib/constants`
+    - `terraform`
+    - ignored backup-git internals under `docs/elite-build-dashboard_inner_git_backup_2026-04-21/`
+  - Next route scan found the committed page/API route entrypoints; `/coming-soon`, `/tasks`, `/whatsapp`, `/projects`, `/dashboard`, and `/admin` are all wired through permissions, sidebar, redirects, direct links, or API calls.
+  - Dependency import scan confirmed active runtime usage for Firebase, Firebase Admin, DnD Kit, Lucide, Next, React, React DOM, Recharts, Tailwind PostCSS, Tailwind CSS, Firebase rules testing, and Vitest.
+  - Dependency import scan found `playwright` and `@vitest/coverage-v8` in `package.json`/lockfile but not currently wired into scripts or config.
+  - Import-graph scan found `components/ui/EmptyState.tsx` with no runtime or test imports.
+  - Script scan found manual cleanup utilities under `CRM/functions/inventory_cleanup/` and `CRM/functions/lead_cleanup/` that are not Cloud Function deploy entrypoints in `firebase.json` and are documented as manual scripts.
+- Files changed:
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - None. Documentation-only audit checkpoint.
+- Validation:
+  - `git diff --check -- tech_debt_remediation.md` passed.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -408,3 +437,94 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - Handle in focused type-model slices with tests.
 - Risk:
   - Medium. Incorrect narrowing can break dynamic field flows.
+
+### CODE-005 - Unreferenced `EmptyState` UI Component
+
+- Status: `Safe To Remove`
+- Type: unused component cleanup
+- Evidence collected:
+  - Import-graph scan of non-test app/component/lib TypeScript files listed `components/ui/EmptyState.tsx` as not imported by runtime code.
+  - The same scan showed `testReferenced: false`.
+  - `rg -n "EmptyState|components/ui/EmptyState|@/components/ui/EmptyState" CRM/elite-build-dashboard --glob '!node_modules/**' --glob '!.next/**'` found only the component's own declaration.
+  - The file is a standalone presentational component and does not register routes, providers, side effects, Firestore listeners, or storage/API calls.
+- Planned remediation:
+  - Delete only `CRM/elite-build-dashboard/components/ui/EmptyState.tsx`.
+- Validation plan:
+  - `npx tsc --noEmit`
+  - `npm run build`
+  - `git diff --check -- CRM/elite-build-dashboard/components/ui/EmptyState.tsx tech_debt_remediation.md`
+- Risk:
+  - Low. TypeScript/build validation should catch any missed import immediately.
+
+### DEP-001 - Playwright Installed But Not Wired
+
+- Status: `Needs Investigation`
+- Type: dependency/tooling debt
+- Evidence collected:
+  - `package.json` lists `playwright` in `devDependencies`.
+  - `rg -n "playwright" CRM/elite-build-dashboard --glob '!node_modules/**' --glob '!.next/**'` found only `package.json` and `package-lock.json`.
+  - No `playwright.config.*` file exists under `CRM/elite-build-dashboard`.
+- Current decision:
+  - Do not remove now. We have been using browser/UAT-style checks manually, and Playwright may still be intended for production-readiness smoke tests.
+  - Either add a real smoke-test script/config in a later QA pass or remove the dependency if we choose not to automate browser checks.
+- Risk:
+  - Medium. Removing it could slow the planned role-view/browser UAT automation.
+
+### DEP-002 - Vitest Coverage Package Installed But Not Wired
+
+- Status: `Needs Investigation`
+- Type: dependency/tooling debt
+- Evidence collected:
+  - `package.json` lists `@vitest/coverage-v8` in `devDependencies`.
+  - `rg -n "@vitest/coverage-v8|coverage-v8" CRM/elite-build-dashboard --glob '!node_modules/**' --glob '!.next/**'` found only `package.json` and `package-lock.json`.
+  - Current scripts are `test`, `test:watch`, `test:rules`, and `test:all`; no coverage script is present.
+- Current decision:
+  - Do not remove now. It may be useful for the upcoming production-quality gate, but it is not currently active.
+  - Decide whether to add a coverage script or remove the dependency in a separate tooling pass.
+- Risk:
+  - Low-medium. This is build-tooling only, but dependency churn before deployment should be deliberate.
+
+### SCRIPT-001 - Dangerous Cleanup Scripts Under `functions/`
+
+- Status: `Needs Investigation`
+- Type: script organization/safety debt
+- Evidence collected:
+  - `CRM/functions/inventory_cleanup/cleanup_inventory.py` deletes every document in the `inventory` collection.
+  - `CRM/functions/lead_cleanup/cleanup_lead.py` deletes every document in the `leads` collection and updates inventory defaults.
+  - Both scripts hardcode `firestore.Client(project="elitebuild-crm")`, which does not match the current dev GCP project ID `elite-build-infra-tech-dev`.
+  - `CRM/elite-build-dashboard/firebase.json` has no Cloud Functions deploy configuration, so these are not deployed through the app's Firebase config.
+  - `docs/AuditReport.md` already flags them as one-off scripts that should move out of `functions/`.
+  - `docs/CRM_Mind_Map_A0.html` references them as manual cleanup scripts.
+- Current decision:
+  - Do not delete or move yet. They are dangerous but documented, and deletion could remove historical recovery/cleanup context.
+  - Candidate follow-up: quarantine under a clearly named `CRM/scripts/dangerous_manual_cleanup/` folder, add explicit environment/project guards, or remove after user approval.
+- Risk:
+  - High if run accidentally. Any remediation must be tiny, reviewed, and validated by static inspection rather than execution.
+
+### DOC-003 - Root README Is Stale Against Current App Shape
+
+- Status: `Needs Investigation`
+- Type: documentation debt
+- Evidence collected:
+  - `README.md` still describes `app/inventory/` and `app/admin/projects/`, but current inventory/project workflows live primarily under `/projects`, and those directories are empty locally.
+  - `README.md` describes older role/security summaries and does not reflect the newer roles and role-view boundaries added during Security Audit Pass 2.
+  - Current route scan shows `/tasks` and `/whatsapp` exist, but the README structure section does not describe them.
+- Current decision:
+  - Do not rewrite as part of code cleanup. Update README in a documentation pass after role-view UAT stabilizes.
+- Risk:
+  - Low runtime risk, medium operational risk because stale setup docs can mislead deployment/UAT.
+
+### LOCAL-001 - Ignored Inner Git Backup Folder
+
+- Status: `Needs Investigation`
+- Type: local-only archive cleanup
+- Evidence collected:
+  - `docs/elite-build-dashboard_inner_git_backup_2026-04-21/` is ignored by `.gitignore`.
+  - `git ls-files docs/elite-build-dashboard_inner_git_backup_2026-04-21` returned no tracked files.
+  - `du -sh docs/elite-build-dashboard_inner_git_backup_2026-04-21` reports about `256K`.
+  - The directory appears to be a backup of a previous inner `.git` folder.
+- Current decision:
+  - Do not remove automatically. It is local-only and not part of production source.
+  - It can be deleted later if we no longer need submodule/inner-git recovery breadcrumbs.
+- Risk:
+  - Very low production risk, but possible historical recovery value.
