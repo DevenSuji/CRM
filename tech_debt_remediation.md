@@ -444,13 +444,16 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `npm run test:smoke` passed locally: 2 Chromium smoke tests.
   - `git diff --check -- CRM/elite-build-dashboard/package.json README.md tech_debt_remediation.md` passed.
 - Commit:
-  - Pending.
+  - `fded543 test: wire vitest coverage script`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 - Dev deploy:
-  - Pending.
+  - `npm run deploy:dev:dry-run` passed.
+  - `npm run deploy:dev` passed.
+  - Cloud Run revision `elite-build-crm-dev-00033-diy` was promoted to 100% traffic.
+  - Service URL: `https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app`.
 - Live smoke:
-  - Pending.
+  - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium smoke tests.
 
 ## Findings Register
 
