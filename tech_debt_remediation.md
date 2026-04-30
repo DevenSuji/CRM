@@ -135,9 +135,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `npx tsc --noEmit` passed.
   - `git diff --check -- tech_debt_remediation.md CRM/elite-build-dashboard/components/LeadDetailPopover.tsx` passed.
 - Commit:
-  - Pending.
+  - `5a2a807 chore: remove unused lead popover imports`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
