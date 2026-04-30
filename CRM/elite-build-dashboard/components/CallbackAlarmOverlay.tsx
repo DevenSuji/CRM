@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { Lead, CallbackRequest } from '@/lib/types/lead';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Phone, X, AlarmClock, Clock, User, MessageSquare } from 'lucide-react';
+import { Phone, X, AlarmClock, Clock, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatPrice } from '@/lib/utils/formatPrice';
 
@@ -21,7 +21,6 @@ interface CallbackAlarmOverlayProps {
 
 export function CallbackAlarmOverlay({ leads, onOpenLead, currentUserUid }: CallbackAlarmOverlayProps) {
   const [dueCallbacks, setDueCallbacks] = useState<DueCallback[]>([]);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const checkedIdsRef = useRef<Set<string>>(new Set());
 
   // Check for due callbacks every 15 seconds

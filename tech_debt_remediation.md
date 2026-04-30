@@ -139,6 +139,32 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
 
+### 2026-04-30 19:48 IST - CODE-003 Callback Alarm Overlay Dead Symbols
+
+- Action: Remove unused `User` icon import and unused `audioRef` variable from `CallbackAlarmOverlay`.
+- Reason: The component now uses Web Audio via `alarmCtxRef` and `alarmIntervalRef`; the older `audioRef` variable is not connected to any JSX or playback logic.
+- Evidence:
+  - `git status --short -- CRM/elite-build-dashboard/components/CallbackAlarmOverlay.tsx` returned no pre-existing dirty state.
+  - `npx eslint components/CallbackAlarmOverlay.tsx` reported:
+    - `User` unused
+    - `audioRef` assigned but never used
+  - `rg -n "\\bUser\\b|audioRef|useRef|CallbackAlarmOverlay" ...` showed:
+    - `User` appears only in the `lucide-react` import in this file.
+    - `audioRef` appears only in its declaration.
+    - `CallbackAlarmOverlay` remains used by `app/page.tsx`.
+- Files changed:
+  - `CRM/elite-build-dashboard/components/CallbackAlarmOverlay.tsx`
+  - `tech_debt_remediation.md`
+- Risk: very low. No UI markup, callback logic, Firestore writes, or alarm playback logic changed.
+- Validation:
+  - `npx eslint components/CallbackAlarmOverlay.tsx` passed with no warnings.
+  - `npx tsc --noEmit` passed.
+  - `git diff --check -- tech_debt_remediation.md CRM/elite-build-dashboard/components/CallbackAlarmOverlay.tsx` passed.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -238,3 +264,18 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - Remove only the unused imports.
 - Risk:
   - Very low. No JSX or behavior changes.
+
+### CODE-003 - Dead Symbols In `CallbackAlarmOverlay`
+
+- Status: `Safe To Refactor`
+- Type: unused import/variable cleanup
+- Evidence collected:
+  - `components/CallbackAlarmOverlay.tsx` had no pre-existing dirty state.
+  - ESLint reports `User` and `audioRef` as unused.
+  - Text search confirms both are not referenced by runtime logic.
+  - The component remains referenced by `app/page.tsx`.
+- Planned remediation:
+  - Remove `User` from the icon import.
+  - Remove only the unused `audioRef` declaration.
+- Risk:
+  - Very low. The active alarm behavior uses `alarmCtxRef` and `alarmIntervalRef`, which are untouched.
