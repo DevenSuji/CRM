@@ -182,9 +182,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `npx tsc --noEmit` passed.
   - `git diff --check -- tech_debt_remediation.md CRM/elite-build-dashboard/lib/hooks/useFirestoreDoc.ts` passed.
 - Commit:
-  - Pending.
+  - `ad20819 chore: remove unused firestore doc lint suppression`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
