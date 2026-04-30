@@ -165,6 +165,27 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
 
+### 2026-04-30 19:52 IST - CODE-004 Remove Unused ESLint Disable In `useFirestoreDoc`
+
+- Action: Remove one unused `react-hooks/set-state-in-effect` disable comment from `useFirestoreDoc`.
+- Reason: ESLint reports the second disable directive as unused. Keeping unused lint suppressions makes future warnings harder to trust.
+- Evidence:
+  - `git status --short -- CRM/elite-build-dashboard/lib/hooks/useFirestoreDoc.ts` returned no pre-existing dirty state.
+  - `npx eslint lib/hooks/useFirestoreDoc.ts` reported one unused disable directive at line 27.
+  - The hook is still actively used by dashboard, leads, tasks, and projects pages/components, so only the unused directive is safe to remove.
+- Files changed:
+  - `CRM/elite-build-dashboard/lib/hooks/useFirestoreDoc.ts`
+  - `tech_debt_remediation.md`
+- Risk: very low. Comment-only cleanup; no runtime code changed.
+- Validation:
+  - `npx eslint lib/hooks/useFirestoreDoc.ts` passed with no warnings.
+  - `npx tsc --noEmit` passed.
+  - `git diff --check -- tech_debt_remediation.md CRM/elite-build-dashboard/lib/hooks/useFirestoreDoc.ts` passed.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -279,3 +300,16 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - Remove only the unused `audioRef` declaration.
 - Risk:
   - Very low. The active alarm behavior uses `alarmCtxRef` and `alarmIntervalRef`, which are untouched.
+
+### CODE-004 - Unused ESLint Disable In `useFirestoreDoc`
+
+- Status: `Safe To Refactor`
+- Type: lint-suppression cleanup
+- Evidence collected:
+  - `lib/hooks/useFirestoreDoc.ts` had no pre-existing dirty state.
+  - ESLint reports one unused `react-hooks/set-state-in-effect` suppression.
+  - The hook itself remains in active use across several runtime components.
+- Planned remediation:
+  - Remove only the unused suppression comment.
+- Risk:
+  - Very low. Comment-only change.

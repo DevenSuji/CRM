@@ -24,7 +24,6 @@ export function useFirestoreDoc<T>(
       // previous docId. This is a legitimate set-in-effect case.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setData(null);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
       return;
     }
