@@ -11,6 +11,8 @@ const PUBLIC_PATHS = ['/login'];
 const ROUTE_CAPS: { match: (p: string) => boolean; capability: Parameters<typeof can>[1] }[] = [
   { match: (p) => p === '/dashboard' || p.startsWith('/dashboard/'), capability: 'view_dashboard' },
   { match: (p) => p.startsWith('/projects'), capability: 'view_projects' },
+  { match: (p) => p.startsWith('/tasks'), capability: 'view_tasks' },
+  { match: (p) => p.startsWith('/whatsapp'), capability: 'view_whatsapp_inbox' },
   { match: (p) => p.startsWith('/admin'), capability: 'view_admin_console' },
   // Leads lives at '/' — handled separately below because it has two possible caps.
 ];

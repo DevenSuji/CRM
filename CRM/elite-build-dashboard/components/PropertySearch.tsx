@@ -1,40 +1,22 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { useState, useRef, useEffect } from 'react';
 import { Project } from '@/lib/types/project';
 import { InterestedProperty } from '@/lib/types/lead';
-import { Plus, Search, X, Building2, MapPin } from 'lucide-react';
+import { Plus, Search, Building2, MapPin } from 'lucide-react';
 
 interface PropertySearchProps {
   /** Already tagged properties — used to prevent duplicates */
   taggedProjectIds: string[];
   onTagProperty: (property: InterestedProperty) => void;
+  /** Projects must already be scoped for the current role by the parent page. */
+  projects: Project[];
 }
 
-export function PropertySearch({ taggedProjectIds, onTagProperty }: PropertySearchProps) {
+export function PropertySearch({ taggedProjectIds, onTagProperty, projects }: PropertySearchProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Load projects on first focus
-  const loadProjects = useCallback(async () => {
-    if (loaded) return;
-    setLoading(true);
-    try {
-      const snap = await getDocs(query(collection(db, 'projects'), orderBy('created_at', 'desc')));
-      setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() } as Project)));
-      setLoaded(true);
-    } catch (err) {
-      console.error('Failed to load projects:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [loaded]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -85,7 +67,7 @@ export function PropertySearch({ taggedProjectIds, onTagProperty }: PropertySear
           type="text"
           value={searchQuery}
           onChange={e => { setSearchQuery(e.target.value); setShowDropdown(true); }}
-          onFocus={() => { loadProjects(); setShowDropdown(true); }}
+          onFocus={() => setShowDropdown(true)}
           placeholder="Search projects by name, location, or type..."
           className="w-full pl-9 pr-4 py-2.5 bg-mn-input-bg border border-mn-input-border rounded-xl text-sm text-mn-text placeholder:text-mn-text-muted/50 focus:outline-none focus:border-mn-input-focus"
         />
@@ -94,9 +76,7 @@ export function PropertySearch({ taggedProjectIds, onTagProperty }: PropertySear
       {/* Dropdown results */}
       {showDropdown && (
         <div className="absolute z-50 w-full mt-1 bg-mn-card border border-mn-border rounded-xl shadow-xl max-h-[200px] overflow-y-auto">
-          {loading ? (
-            <div className="px-4 py-3 text-xs text-mn-text-muted animate-pulse">Loading projects...</div>
-          ) : filtered.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="px-4 py-3 text-xs text-mn-text-muted">
               {searchQuery ? 'No matching projects found.' : 'All projects are already tagged.'}
             </div>

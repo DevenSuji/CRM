@@ -1,4 +1,5 @@
 import { Timestamp } from 'firebase/firestore';
+import type { UserRole } from '@/lib/types/user';
 
 export interface LaneConfig {
   id: string;
@@ -46,7 +47,6 @@ export function statusToLaneId(status: string): string {
 export interface WhatsAppConfig {
   phone_number_id: string;
   business_account_id: string;
-  access_token: string;
   /** Pre-approved template names */
   template_site_visit_confirmation: string;
   template_site_visit_reminder: string;
@@ -57,7 +57,6 @@ export interface WhatsAppConfig {
 export const DEFAULT_WHATSAPP_CONFIG: WhatsAppConfig = {
   phone_number_id: '',
   business_account_id: '',
-  access_token: '',
   template_site_visit_confirmation: 'site_visit_confirmation',
   template_site_visit_reminder: 'site_visit_reminder',
   template_property_match: '',
@@ -65,18 +64,14 @@ export const DEFAULT_WHATSAPP_CONFIG: WhatsAppConfig = {
 };
 
 /* ==================== AI (Gemini) Config ====================
- * TODO(security): Migrate api_key (and the WhatsApp access_token) to Google
- * Secret Manager. Today these live in `crm_config/*` and are readable by any
- * active authenticated user per Firestore rules — see docs/WhatsAppHardening.md
- * and docs/AuditReport.md §4.1. */
+ * Secrets must not be stored here. Gemini credentials are read server-side from
+ * GEMINI_API_KEY, and WhatsApp credentials from WHATSAPP_ACCESS_TOKEN. */
 export interface AIConfig {
-  api_key: string;
   model: string; // e.g. 'gemini-2.5-flash'
   enabled: boolean;
 }
 
 export const DEFAULT_AI_CONFIG: AIConfig = {
-  api_key: '',
   model: 'gemini-2.5-flash',
   enabled: false,
 };
@@ -109,6 +104,88 @@ export interface PropertyMatchConfig {
 
 export const DEFAULT_PROPERTY_MATCH_CONFIG: PropertyMatchConfig = {
   threshold_percent: 5,
+};
+
+/* ==================== Lead Assignment Config ==================== */
+export type LeadAssignmentStrategy = 'workload' | 'round_robin';
+
+export interface LeadAssignmentRule {
+  id: string;
+  label: string;
+  source_contains: string;
+  assignee_uids: string[];
+  active: boolean;
+}
+
+export interface LeadAssignmentConfig {
+  enabled: boolean;
+  strategy: LeadAssignmentStrategy;
+  eligible_roles: UserRole[];
+  eligible_user_uids: string[];
+  source_rules: LeadAssignmentRule[];
+  round_robin_cursor?: number;
+  updated_at?: Timestamp | null;
+}
+
+export const DEFAULT_LEAD_ASSIGNMENT_CONFIG: LeadAssignmentConfig = {
+  enabled: true,
+  strategy: 'workload',
+  eligible_roles: ['sales_exec'],
+  eligible_user_uids: [],
+  source_rules: [],
+  round_robin_cursor: 0,
+};
+
+/* ==================== SLA / Follow-up Config ==================== */
+export interface SLAConfig {
+  enabled: boolean;
+  first_call_minutes: number;
+  stale_lead_days: number;
+  no_follow_up_days: number;
+  missed_callback_minutes: number;
+  updated_at?: Timestamp | null;
+}
+
+export const DEFAULT_SLA_CONFIG: SLAConfig = {
+  enabled: true,
+  first_call_minutes: 60,
+  stale_lead_days: 3,
+  no_follow_up_days: 2,
+  missed_callback_minutes: 15,
+};
+
+/* ==================== Nurture Sequence Config ==================== */
+export interface NurtureConfig {
+  enabled: boolean;
+  welcome_enabled: boolean;
+  welcome_delay_minutes: number;
+  property_match_follow_up_enabled: boolean;
+  property_match_follow_up_days: number;
+  site_visit_reminder_enabled: boolean;
+  site_visit_reminder_hours_before: number;
+  post_site_visit_follow_up_enabled: boolean;
+  post_site_visit_follow_up_hours_after: number;
+  old_lead_reactivation_enabled: boolean;
+  old_lead_reactivation_days: number;
+  no_response_follow_up_enabled: boolean;
+  no_response_follow_up_days: number;
+  updated_at?: Timestamp | null;
+}
+
+export const DEFAULT_NURTURE_CONFIG: NurtureConfig = {
+  enabled: true,
+  welcome_enabled: true,
+  welcome_delay_minutes: 0,
+  property_match_follow_up_enabled: true,
+  property_match_follow_up_days: 1,
+  site_visit_reminder_enabled: true,
+  site_visit_reminder_hours_before: 24,
+  post_site_visit_follow_up_enabled: true,
+  post_site_visit_follow_up_hours_after: 2,
+  old_lead_reactivation_enabled: true,
+  old_lead_reactivation_days: 30,
+  no_response_follow_up_enabled: true,
+  no_response_follow_up_days: 2,
 };
 
 /** Maps a lane ID back to the Firestore status value */

@@ -1,66 +1,90 @@
 "use client";
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import type { DragEvent } from 'react';
+import { useState } from 'react';
 import {
-  Building2, LogOut, Sun, Moon,
-  Sparkles, Target, FolderKanban, ShieldCheck,
+  LogOut, Sun, Moon,
+  BarChart3, UsersRound, ClipboardList, MessagesSquare, PanelsTopLeft, ShieldCog,
 } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { useBranding } from '@/lib/context/BrandingContext';
 import { can, Capability, ROLE_LABELS } from '@/lib/utils/permissions';
+import { BrandMark } from '@/components/BrandMark';
 
 interface NavItem {
   label: string;
   href: string;
-  icon: typeof Sparkles;
+  icon: typeof BarChart3;
   /** Capability required to see this nav entry. If omitted, visible to all authed users. */
   requires?: Capability;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: Sparkles, requires: 'view_dashboard' },
-  { label: 'Leads', href: '/', icon: Target, requires: 'view_all_leads' },
-  { label: 'Projects', href: '/projects', icon: FolderKanban, requires: 'view_projects' },
-  { label: 'Admin Console', href: '/admin', icon: ShieldCheck, requires: 'view_admin_console' },
+  { label: 'Dashboard', href: '/dashboard', icon: BarChart3, requires: 'view_dashboard' },
+  { label: 'Leads', href: '/', icon: UsersRound, requires: 'view_all_leads' },
+  { label: 'Overdue Tasks', href: '/tasks', icon: ClipboardList, requires: 'view_tasks' },
+  { label: 'WhatsApp', href: '/whatsapp', icon: MessagesSquare, requires: 'view_whatsapp_inbox' },
+  { label: 'Projects', href: '/projects', icon: PanelsTopLeft, requires: 'view_projects' },
+  { label: 'Admin Console', href: '/admin', icon: ShieldCog, requires: 'view_admin_console' },
 ];
 
-interface Branding {
-  companyName: string;
-  tagline: string;
-  logo: string | null;
-  banner: string | null;
-  primaryColor: string;
+const NAV_ORDER_STORAGE_KEY = 'elite-build-nav-order:v2';
+const DEFAULT_NAV_ORDER = NAV_ITEMS.map(item => item.href);
+
+function normalizeNavOrder(order?: string[] | null): string[] {
+  const known = new Set(DEFAULT_NAV_ORDER);
+  const saved = (order || []).filter(href => known.has(href));
+  return [...saved, ...DEFAULT_NAV_ORDER.filter(href => !saved.includes(href))];
+}
+
+function orderedNavItems(order: string[]): NavItem[] {
+  const rank = new Map(normalizeNavOrder(order).map((href, index) => [href, index]));
+  return [...NAV_ITEMS].sort((a, b) => (rank.get(a.href) ?? 999) - (rank.get(b.href) ?? 999));
 }
 
 export default function TopNav() {
   const pathname = usePathname();
   const { crmUser, logout } = useAuth();
   const { activeColor, setColor } = useTheme();
-  const [branding, setBranding] = useState<Branding | null>(null);
+  const { branding } = useBranding();
+  const [navOrder, setNavOrder] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return DEFAULT_NAV_ORDER;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(NAV_ORDER_STORAGE_KEY) || 'null');
+      return Array.isArray(saved) ? normalizeNavOrder(saved) : DEFAULT_NAV_ORDER;
+    } catch {
+      return DEFAULT_NAV_ORDER;
+    }
+  });
+  const [dragHref, setDragHref] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadBranding = async () => {
-      try {
-        const snap = await getDoc(doc(db, 'crm_config', 'branding'));
-        if (snap.exists()) {
-          const d = snap.data();
-          setBranding({
-            companyName: d.companyName || '',
-            tagline: d.tagline || '',
-            logo: d.logo || null,
-            banner: d.banner || null,
-            primaryColor: d.primaryColor || '#2563eb',
-          });
-        }
-      } catch (err) {
-        console.error('Failed to load branding:', err);
-      }
-    };
-    loadBranding();
-  }, []);
+  const moveNavItem = (sourceHref: string | null, targetHref: string) => {
+    if (!sourceHref || sourceHref === targetHref) return;
+    setNavOrder(prev => {
+      const next = normalizeNavOrder(prev);
+      const from = next.indexOf(sourceHref);
+      const to = next.indexOf(targetHref);
+      if (from < 0 || to < 0) return next;
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      localStorage.setItem(NAV_ORDER_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleDragStart = (event: DragEvent, href: string) => {
+    setDragHref(href);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', href);
+  };
+
+  const handleDrop = (event: DragEvent, href: string) => {
+    event.preventDefault();
+    moveNavItem(event.dataTransfer.getData('text/plain') || dragHref, href);
+    setDragHref(null);
+  };
 
   const visibleItems = NAV_ITEMS.filter(item => {
     if (!item.requires) return true;
@@ -70,8 +94,12 @@ export default function TopNav() {
     }
     return can(crmUser?.role, item.requires);
   });
+  const visibleOrderedItems = orderedNavItems(navOrder).filter(item =>
+    visibleItems.some(visible => visible.href === item.href)
+  );
 
-  const companyName = branding?.companyName || 'ELITE BUILD';
+  const companyName = branding.companyName || 'ELITE BUILD';
+  const tagline = branding.tagline || 'AI-powered real estate command center';
 
   return (
     <>
@@ -79,31 +107,21 @@ export default function TopNav() {
         <div className="flex h-[4.4rem] items-center gap-3 px-4 sm:px-6 lg:px-8">
           {/* Brand */}
           <Link href="/" className="mr-0 flex min-w-0 items-center gap-3 md:mr-8">
-            {branding?.logo ? (
-              <img
-                src={branding.logo}
-                alt={companyName}
-                className="h-10 w-10 flex-shrink-0 rounded-2xl object-cover shadow-lg"
-              />
-            ) : (
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-mn-h2 to-mn-accent shadow-[0_10px_24px_rgba(36,93,81,0.2)]">
-                <Building2 className="h-5 w-5 text-white" />
-              </div>
-            )}
+            <BrandMark branding={branding} />
             <div className="min-w-0">
               <div className="flex items-baseline gap-1.5">
                 <span className="truncate text-sm font-black tracking-[0.02em] text-mn-h1 sm:text-[0.98rem]">{companyName.toUpperCase()}</span>
                 <span className="rounded-full border border-mn-border/60 bg-mn-card/70 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-mn-text-muted">CRM</span>
               </div>
               <p className="hidden truncate text-[11px] font-medium text-mn-text-muted sm:block">
-                AI-powered real estate command center
+                {tagline}
               </p>
             </div>
           </Link>
 
           {/* Navigation */}
           <nav className="hidden items-center gap-1 rounded-full border border-mn-border/50 bg-mn-card/70 p-1.5 shadow-sm backdrop-blur-xl md:flex">
-            {visibleItems.map(item => {
+            {visibleOrderedItems.map(item => {
               const Icon = item.icon;
               const active = item.href === '/'
                 ? pathname === '/'
@@ -112,13 +130,19 @@ export default function TopNav() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  draggable
+                  onDragStart={event => handleDragStart(event, item.href)}
+                  onDragOver={event => event.preventDefault()}
+                  onDrop={event => handleDrop(event, item.href)}
+                  onDragEnd={() => setDragHref(null)}
+                  title="Drag to reorder"
                   className={`flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-black tracking-tight transition-all ${
                     active
                       ? 'bg-mn-card-hover text-mn-h1 shadow-[0_10px_24px_rgba(0,0,0,0.12)]'
                       : 'text-mn-text-muted hover:bg-mn-card-hover/80 hover:text-mn-text'
-                  }`}
+                  } ${dragHref === item.href ? 'opacity-50' : ''} cursor-grab active:cursor-grabbing`}
                 >
-                  <Icon className="h-4 w-4 flex-shrink-0" />
+                  <Icon className="h-5 w-5 flex-shrink-0 stroke-[2.35]" />
                   {item.label}
                 </Link>
               );
@@ -171,10 +195,10 @@ export default function TopNav() {
       </header>
       <nav
         className="safe-bottom fixed inset-x-3 bottom-0 z-50 rounded-[2rem] border border-mn-border/70 bg-mn-card/95 p-2 shadow-[0_18px_60px_rgba(18,39,33,0.18)] backdrop-blur-2xl md:hidden"
-        style={{ gridTemplateColumns: `repeat(${visibleItems.length}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${visibleOrderedItems.length}, minmax(0, 1fr))` }}
       >
-        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${visibleItems.length}, minmax(0, 1fr))` }}>
-          {visibleItems.map(item => {
+        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${visibleOrderedItems.length}, minmax(0, 1fr))` }}>
+          {visibleOrderedItems.map(item => {
             const Icon = item.icon;
             const active = item.href === '/'
               ? pathname === '/'
@@ -183,13 +207,18 @@ export default function TopNav() {
               <Link
                 key={item.href}
                 href={item.href}
+                draggable
+                onDragStart={event => handleDragStart(event, item.href)}
+                onDragOver={event => event.preventDefault()}
+                onDrop={event => handleDrop(event, item.href)}
+                onDragEnd={() => setDragHref(null)}
                 className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-3xl px-2 text-[10px] font-black transition-all ${
                   active
-                    ? 'bg-mn-h2 text-white shadow-lg shadow-mn-h2/20'
+                    ? 'bg-mn-brand text-mn-brand-contrast shadow-lg shadow-mn-brand/20'
                     : 'text-mn-text-muted hover:bg-mn-card-hover hover:text-mn-text'
-                }`}
+                } ${dragHref === item.href ? 'opacity-50' : ''}`}
               >
-                <Icon className="h-5 w-5" />
+                <Icon className="h-6 w-6 stroke-[2.35]" />
                 <span className="truncate">{item.label.replace(' Console', '')}</span>
               </Link>
             );

@@ -100,7 +100,7 @@ export function MultiImageUpload({
               <img src={url} alt="" className="w-full h-full object-cover" />
               {/* Hero badge */}
               {i === 0 && (
-                <span className="absolute top-2 left-2 px-2 py-0.5 bg-mn-h2 text-white text-[9px] font-black rounded-full uppercase">
+                <span className="absolute top-2 left-2 px-2 py-0.5 bg-mn-brand text-mn-brand-contrast text-[9px] font-black rounded-full uppercase">
                   Hero
                 </span>
               )}
@@ -111,7 +111,7 @@ export function MultiImageUpload({
                     type="button"
                     onClick={() => setAsHero(i)}
                     title="Set as hero image"
-                    className="w-6 h-6 rounded-full bg-mn-h2/80 text-white flex items-center justify-center hover:bg-mn-h2 text-[9px] font-black"
+                    className="w-6 h-6 rounded-full bg-mn-brand/90 text-mn-brand-contrast flex items-center justify-center hover:bg-mn-brand text-[9px] font-black"
                   >
                     H
                   </button>
@@ -119,7 +119,7 @@ export function MultiImageUpload({
                 <button
                   type="button"
                   onClick={() => removeImage(i)}
-                  className="w-6 h-6 rounded-full bg-mn-danger/80 text-white flex items-center justify-center hover:bg-mn-danger"
+                  className="w-6 h-6 rounded-full bg-mn-danger-action text-mn-danger-contrast flex items-center justify-center hover:bg-mn-danger-action/90"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>

@@ -1,15 +1,27 @@
 # WhatsApp — Security Hardening Plan
 
 _Created:_ 2026-04-21
-_Status:_ **BLOCKED** on new WhatsApp Business Account number. No code changes until the new number is provisioned.
+_Status:_ **FOUNDATION HARDENED** on 2026-04-30. Dashboard sends now go through a server route, the access token is no longer stored in browser-facing config/UI, inbound webhook signature verification is implemented, and the CRM-owned conversation model now supports role-scoped inbox reads.
 
 ---
 
 ## Why this doc exists
 
-During the Phase 1 audit (`docs/AuditReport.md` §4.1, §4.4, §4.8) we identified multiple HIGH-severity issues with the current WhatsApp integration. The user is waiting on a new WhatsApp Business number before any WhatsApp code can change — patching the live number now would break the existing send flow, and the new number is close enough that re-work is wasteful.
+During the Phase 1 audit (`docs/AuditReport.md` §4.1, §4.4, §4.8) we identified multiple HIGH-severity issues with the WhatsApp integration.
 
-**This doc captures the full plan so that when the new number lands, remediation is a checklist — not a re-investigation.**
+**Current posture:** code no longer expects a WhatsApp token in Firestore. Set the real token as `WHATSAPP_ACCESS_TOKEN` for the Next.js server route and as `whatsapp-access-token` in Google Secret Manager for Cloud Functions. New chat UI should read from `whatsapp_conversations`, not the legacy flat `whatsapp_messages` collection.
+
+## CRM-owned inbox model
+
+- `whatsapp_messages` remains a legacy, Admin/SuperAdmin-only audit collection during migration.
+- `whatsapp_conversations/{phone}` is the role-scoped inbox boundary. It denormalizes `assigned_to`, `lead_id`, phone/name preview fields, last-message metadata, unread count, and 24-hour service-window status.
+- `whatsapp_conversations/{phone}/messages/{message}` stores inbound/outbound chat events and remains browser-read-only. All writes go through Admin SDK routes/webhooks.
+- Sales Exec reads are allowed only when `whatsapp_conversations.assigned_to == request.auth.uid`; Admin and Super Admin can read all conversations. Channel Partner, Viewer, and Digital Marketing currently have no WhatsApp inbox access.
+- Lead reassignment must call the server sync path so conversation ownership changes with the lead. This is the privacy line for shared-company-number messaging.
+- Free-text outbound messages are allowed only while the 24-hour service window is open. Expired conversations require the approved-template flow.
+- Dev deployment note: `elite-build-infra-tech-dev` currently has no WhatsApp Secret Manager entries. Create `whatsapp-access-token`, `whatsapp-app-secret`, and `whatsapp-webhook-verify-token`, then redeploy through `npm run deploy:dev` so Cloud Run receives `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, and `WHATSAPP_WEBHOOK_VERIFY_TOKEN`.
+
+---
 
 ---
 
@@ -17,17 +29,16 @@ During the Phase 1 audit (`docs/AuditReport.md` §4.1, §4.4, §4.8) we identifi
 
 ### 1. WhatsApp access token readable by any authenticated user (HIGH)
 - **Where:** `crm_config/whatsapp` Firestore doc
-- **Why it's broken:** `firestore.rules` allows any `isActive()` user to `read` `crm_config/*`. Viewer, Channel Partner, anyone — all can pull the Meta Graph token via browser devtools.
-- **Impact:** Token can be used to send messages from our business number to any number, bypassing our CRM entirely. Reputation + compliance risk.
+- **Status:** remediated in code/rules. `crm_config/whatsapp` is admin-readable only, the config type no longer has `access_token`, and token inputs were removed from the Admin UI.
+- **Remaining manual step:** delete any legacy `access_token` field still present in production Firestore and rotate the token.
 
 ### 2. WhatsApp send runs from the browser (HIGH)
 - **Where:** `app/page.tsx` — send helper fetches `crm_config/whatsapp`, builds the Graph API call, attaches `Authorization: Bearer <token>`, and calls `graph.facebook.com` directly.
-- **Why it's broken:** Token is in browser memory and on the wire. Any user with the app loaded has a live sending credential.
-- **Impact:** Compromise of *any* user account = ability to send from our business number.
+- **Status:** remediated. Browser calls now go to `POST /api/whatsapp/send` with a Firebase ID token. The server route verifies the user and attaches the Meta token server-side.
 
 ### 3. No inbound webhook signature verification (LOW → HIGH once inbound exists)
-- **Current state:** No inbound WhatsApp webhook is wired up yet.
-- **Future risk:** When we wire inbound (delivery receipts, replies), Meta signs requests with HMAC-SHA256 via `X-Hub-Signature-256`. The existing `lead_ingestion_webhook` pattern (shared secret in header) is **not** sufficient for Meta — signature verification is required or anyone can POST fake events.
+- **Status:** remediated for the Next.js webhook. The route verifies `X-Hub-Signature-256` using the raw request body and app secret before processing inbound messages/status events.
+- **Remaining:** make sure the production deployment has the Meta app secret available in the runtime environment before exposing the webhook URL publicly.
 
 ### 4. No opt-out enforcement on server (MEDIUM)
 - **Current state:** Opt-out is checked in the client (`app/page.tsx`) before calling the Graph API.
@@ -56,28 +67,24 @@ During the Phase 1 audit (`docs/AuditReport.md` §4.1, §4.4, §4.8) we identifi
 2. **Remove all Graph API calls from `app/page.tsx`.** Replace with a `fetch('/api/whatsapp/send', ...)` call that includes the ID token in the header.
 
 3. **Tighten Firestore rules on `crm_config/whatsapp`.**
-   - `allow read: if isSuperAdmin() || isAdmin()` (only admins need to see the config UI).
-   - Keep `write` restricted to superadmin.
+   - Done: secret-bearing config docs are readable by Admin/SuperAdmin only.
 
 ### Phase B — Secret Manager migration
 
 1. **Rotate the Meta access token.** Because it's been in a readable Firestore doc since launch, assume it's compromised. Generate a new long-lived access token via Meta Business.
-2. **Store new token in Secret Manager** as `whatsapp-access-token` (already exists for the `on_lead_match_update` Cloud Function — reuse the same secret).
+2. **Store new token in Secret Manager** as `whatsapp-access-token` for Cloud Functions and as `WHATSAPP_ACCESS_TOKEN` in the Next.js runtime environment.
 3. **Remove `access_token` from `crm_config/whatsapp`.** Keep `phone_number_id`, `business_account_id`, template names (non-secret).
 4. **Update `WhatsAppConfig` TypeScript type** (`lib/types/config.ts`) to drop `access_token`.
 5. **Update the Admin WhatsApp settings UI** — no access-token input; replace with a note directing admins to Secret Manager.
 
-### Phase C — Inbound webhook (when we need it)
+### Phase C — Inbound webhook and CRM-owned inbox
 
-1. Add a `POST /api/webhooks/whatsapp-inbound` (or a Cloud Function).
-2. Verify `X-Hub-Signature-256`:
-   ```
-   expected = hmac_sha256(app_secret, raw_request_body)
-   if not hmac.compare_digest(expected, header_value): 401
-   ```
-3. Store `app_secret` in Secret Manager as `whatsapp-app-secret`.
-4. Handle subscription types we care about: `messages` (replies), `message_status` (delivery/read).
-5. Dedup by `event_id` via `processed_events` collection (same pattern as `lead_ingestion_webhook`).
+1. [x] Add a signed inbound webhook route.
+2. [x] Verify `X-Hub-Signature-256` against the raw request body before parsing.
+3. [ ] Store the production Meta app secret in Secret Manager and bind it to the Cloud Run runtime.
+4. [x] Store inbound messages and status events through Admin SDK routes, not browser writes.
+5. [x] Dual-write into `whatsapp_conversations` so the inbox can be role-scoped.
+6. [ ] Add media download/storage, status-tick UI, and template-send UI.
 
 ### Phase D — Rate limiting & observability
 
@@ -99,31 +106,29 @@ Per `docs/TechDebtAndSecurityPosture.md` Phase 5, no security remediation ships 
   - Dedups via fingerprint — two identical requests produce one send.
   - Does not expose the access token in the response on error.
 - **Client test:** `app/page.tsx` imports no code that touches the Graph API directly.
-- **Signature-verify test** (when Phase C ships): bad signature → 401; replay of a processed event → 200 with no side effects.
+- **Signature-verify test:** bad signature → 401; replay/dedup behavior should not create duplicate messages.
 
 ---
 
 ## Rollout checklist (when new number arrives)
 
-1. [ ] Provision new number in Meta Business; note `phone_number_id`.
-2. [ ] Create new permanent access token (System User token, not user token).
-3. [ ] Write `whatsapp-access-token` secret in Secret Manager.
-4. [ ] Implement Phase A (server route + permission + rules tightening).
-5. [ ] Run rules + API tests locally against emulator.
-6. [ ] Deploy rules → deploy Next.js → verify send works for an admin user.
-7. [ ] Revoke OLD access token in Meta Business (after verifying new path works).
-8. [ ] Remove `access_token` field from Firestore `crm_config/whatsapp` doc.
-9. [ ] Update `WhatsAppConfig` type and admin UI (Phase B #4, #5).
-10. [ ] If inbound webhook needed: Phase C.
-11. [ ] Add rate-limiting + logging (Phase D).
-12. [ ] Mark findings §4.1 and §4.4 as REMEDIATED in `docs/AuditReport.md`.
+1. [ ] Create/rotate a permanent access token (System User token, not user token).
+2. [ ] Set `WHATSAPP_ACCESS_TOKEN` in the Next.js deployment environment.
+3. [ ] Write `whatsapp-access-token` in Secret Manager for Cloud Functions.
+4. [x] Implement server route + Firebase token verification.
+5. [x] Tighten Firestore rules for `crm_config/whatsapp`.
+6. [x] Update `WhatsAppConfig` type and admin UI.
+7. [x] Run rules tests locally against emulator.
+8. [ ] Deploy rules → deploy Next.js/functions → verify send works for an admin user.
+9. [ ] Revoke OLD access token in Meta Business.
+10. [ ] Remove `access_token` field from production Firestore `crm_config/whatsapp` doc.
+11. [x] Build signed inbound webhook + role-scoped conversation collection.
+12. [ ] Add approved-template picker/send path for expired 24-hour conversations.
+13. [ ] Add media storage, delivery/read status UI, and push notifications.
+14. [ ] Add rate-limiting + logging (Phase D).
 
 ---
 
-## What NOT to do before the new number lands
+## Deployment note
 
-- Don't rotate the **current** access token — users' in-browser sessions will start failing and we have no server-side fallback yet.
-- Don't tighten Firestore rules on `crm_config/whatsapp` — the current client reads it.
-- Don't add the server route yet — it needs the token in Secret Manager to work, and rotating on the old number is the wrong order.
-
-The correct sequence is: new number → new token in Secret Manager → server route shipped → old token revoked → old Firestore field removed. Skipping steps breaks live sends.
+The correct sequence now is: set new server/cloud secrets → deploy rules/code/functions → verify sends → revoke old token → remove old Firestore field.

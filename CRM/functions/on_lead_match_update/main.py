@@ -16,8 +16,7 @@ Guardrails:
 
 Config:
   - crm_config/whatsapp (Firestore): phone_number_id, template_property_match, enabled
-  - Secret Manager: whatsapp-access-token (preferred) — falls back to
-    crm_config/whatsapp.access_token for transition.
+  - Secret Manager: whatsapp-access-token
 
 Activity log entry on success:
   { type: 'whatsapp_sent', sent_by: 'system-match',
@@ -38,8 +37,8 @@ IST = timezone(timedelta(hours=5, minutes=30))
 _cached_access_token = None
 
 
-def _get_access_token(fallback_from_config):
-    """Fetch WhatsApp access token from Secret Manager; fall back to config doc."""
+def _get_access_token():
+    """Fetch WhatsApp access token from Secret Manager."""
     global _cached_access_token
     if _cached_access_token:
         return _cached_access_token
@@ -54,9 +53,7 @@ def _get_access_token(fallback_from_config):
     except Exception as e:
         print(f"SECRET_MANAGER_WARN: {e}")
 
-    if fallback_from_config:
-        _cached_access_token = fallback_from_config
-    return _cached_access_token or ""
+    return ""
 
 
 def _system_match_fingerprint(interested_properties):
@@ -217,7 +214,7 @@ def on_lead_match_update(cloud_event):
         print("WA_NO_TEMPLATE_CONFIGURED")
         return
 
-    access_token = _get_access_token(wa_config.get("access_token"))
+    access_token = _get_access_token()
     if not access_token:
         print("WA_NO_ACCESS_TOKEN")
         return

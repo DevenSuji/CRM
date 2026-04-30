@@ -7,17 +7,19 @@ import {
 import {
   Plus, Trash2, Save, GripVertical, ChevronDown,
   Settings, Palette, Users, MessageCircle, PhoneCall, CheckCircle, Clock,
-  Shield, ShieldCheck, Eye, EyeOff, UserPlus, Mail, ImageIcon, SwatchBook, Megaphone,
-  Sparkles, ExternalLink, Briefcase, Calculator, Handshake, Crown,
+  Shield, ShieldCheck, Eye, UserPlus, Mail, ImageIcon, SwatchBook, Megaphone,
+  Sparkles, ExternalLink, Briefcase, Calculator, Handshake, Crown, PhoneForwarded,
 } from 'lucide-react';
 import { useToast } from '@/lib/hooks/useToast';
 import { useAuth } from '@/lib/context/AuthContext';
+import { notifyBrandingUpdated } from '@/lib/context/BrandingContext';
 import { CRMUser, UserRole } from '@/lib/types/user';
 import { can, ROLE_LABELS } from '@/lib/utils/permissions';
 import {
   canChangeRole as guardCanChangeRole,
   canToggleActive as guardCanToggleActive,
   canRemoveMember as guardCanRemoveMember,
+  canOnboardRole as guardCanOnboardRole,
   assignableRoles as guardAssignableRoles,
   compareTeamMembers,
 } from '@/lib/auth/teamGuards';
@@ -33,6 +35,9 @@ import {
   WhatsAppConfig, DEFAULT_WHATSAPP_CONFIG,
   AIConfig, DEFAULT_AI_CONFIG,
   MarketingTeam,
+  LeadAssignmentConfig, DEFAULT_LEAD_ASSIGNMENT_CONFIG, LeadAssignmentRule,
+  SLAConfig, DEFAULT_SLA_CONFIG,
+  NurtureConfig, DEFAULT_NURTURE_CONFIG,
 } from '@/lib/types/config';
 
 const TABS = [
@@ -40,6 +45,9 @@ const TABS = [
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { id: 'ai', label: 'AI Settings', icon: Sparkles },
   { id: 'team', label: 'Team', icon: Users },
+  { id: 'assignment', label: 'Lead Assignment', icon: PhoneForwarded },
+  { id: 'sla', label: 'Lead SLA', icon: Clock },
+  { id: 'nurture', label: 'Nurture Sequences', icon: MessageCircle },
   { id: 'branding', label: 'Branding', icon: ImageIcon },
   { id: 'card_colors', label: 'Card Colors', icon: SwatchBook },
   { id: 'marketing_teams', label: 'Marketing Teams', icon: Megaphone },
@@ -65,7 +73,7 @@ export default function AdminConsolePage() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full overflow-y-auto">
       <PageHeader title="Admin Console" subtitle="System configuration" />
 
       <div className="px-4 py-4 md:px-8">
@@ -91,11 +99,14 @@ export default function AdminConsolePage() {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-hidden flex flex-col">
+      <div className="flex flex-col">
         {activeTab === 'lanes' && <KanbanLanesTab />}
         {activeTab === 'whatsapp' && <WhatsAppSettingsTab />}
         {activeTab === 'ai' && <AISettingsTab />}
         {activeTab === 'team' && <TeamTab />}
+        {activeTab === 'assignment' && <LeadAssignmentTab />}
+        {activeTab === 'sla' && <LeadSLATab />}
+        {activeTab === 'nurture' && <NurtureSequencesTab />}
         {activeTab === 'branding' && <BrandingTab />}
         {activeTab === 'card_colors' && <CardColorsTab />}
         {activeTab === 'marketing_teams' && <MarketingTeamsTab />}
@@ -193,7 +204,7 @@ function KanbanLanesTab() {
 
       <div className="space-y-3">
         {lanes.map((lane, idx) => (
-          <div key={lane.id} className="group flex items-center gap-3 rounded-[1.35rem] border border-white/45 bg-[linear-gradient(180deg,rgba(255,255,255,0.8),rgba(255,255,255,0.68))] p-4 transition-all hover:border-mn-border dark:bg-[linear-gradient(180deg,rgba(13,26,22,0.92),rgba(11,24,20,0.82))]">
+          <div key={lane.id} className="group flex items-center gap-3 rounded-[1.35rem] border border-mn-border/45 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--mn-card-hover)_84%,transparent),color-mix(in_srgb,var(--mn-card)_92%,transparent))] p-4 transition-all hover:border-mn-border/70">
             <GripVertical className="w-4 h-4 text-mn-text-muted/30 group-hover:text-mn-text-muted cursor-grab flex-shrink-0" />
             <input
               value={lane.emoji || ''}
@@ -308,10 +319,13 @@ function WhatsAppSettingsTab() {
             />
             <Input
               label="Permanent Access Token"
-              value={config.access_token}
-              onChange={e => setConfig(prev => ({ ...prev, access_token: e.target.value }))}
-              placeholder="EAAxxxxxxxxx..."
+              value="Stored server-side"
+              disabled
+              placeholder="Stored server-side"
             />
+            <p className="text-[10px] text-mn-text-muted">
+              WhatsApp tokens are not stored in Firestore or shown in the browser. Set <code className="px-1 py-0.5 bg-mn-border/30 rounded">WHATSAPP_ACCESS_TOKEN</code> in the server environment.
+            </p>
           </div>
         </Card>
 
@@ -388,10 +402,10 @@ const GEMINI_MODELS = [
 
 function AISettingsTab() {
   const { showToast } = useToast();
+  const { firebaseUser } = useAuth();
   const [config, setConfig] = useState<AIConfig>(DEFAULT_AI_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
 
   useEffect(() => {
@@ -406,38 +420,49 @@ function AISettingsTab() {
   }, []);
 
   const handleSave = async () => {
-    console.log('[AISettings] Save clicked. Writing:', {
-      enabled: config.enabled,
-      model: config.model,
-      api_key_length: config.api_key?.length || 0,
-      api_key_prefix: config.api_key?.slice(0, 6) || '(empty)',
-    });
+    const normalizedConfig = {
+      ...config,
+      model: config.model.trim(),
+    };
     setSaving(true);
     try {
-      await setDoc(doc(db, 'crm_config', 'ai'), config);
-      console.log('[AISettings] Save OK');
+      await setDoc(doc(db, 'crm_config', 'ai'), normalizedConfig);
+      setConfig(normalizedConfig);
       showToast('success', 'AI settings saved.');
     } catch (err) {
-      console.error('[AISettings] Save FAILED:', err);
+      console.error('[AISettings] Save failed:', err);
       showToast('error', `Save failed: ${(err as Error)?.message || 'unknown'}`);
     } finally { setSaving(false); }
   };
 
-  // Round-trip through /api/polish-note with a short known string to confirm the
-  // key works. Uses the saved config, so press Save first if the user edited.
+  // Save the visible config first, then round-trip through /api/polish-note.
   const handleTest = async () => {
+    const normalizedConfig = {
+      ...config,
+      model: config.model.trim(),
+    };
     setTesting(true);
     try {
+      await setDoc(doc(db, 'crm_config', 'ai'), normalizedConfig);
+      setConfig(normalizedConfig);
+      const token = await firebaseUser?.getIdToken();
+      if (!token) {
+        showToast('error', 'Sign in again before testing Gemini.');
+        return;
+      }
       const res = await fetch('/api/polish-note', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ text: 'teh quik test.' }),
       });
       const data = await res.json();
       if (res.ok && data.polished) {
         showToast('success', `Gemini responded: "${data.polished}"`);
       } else {
-        showToast('error', data.error || 'Test failed. Check the key and Save before testing.');
+        showToast('error', data.error || 'Test failed. Check the Gemini key, model, quota, and API access.');
       }
     } catch (err) {
       console.error(err);
@@ -446,8 +471,6 @@ function AISettingsTab() {
   };
 
   if (loading) return <div className="p-8 text-mn-text-muted">Loading...</div>;
-
-  const keyLooksValid = config.api_key.startsWith('AIza') && config.api_key.length >= 30;
 
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
@@ -477,9 +500,9 @@ function AISettingsTab() {
 
         <Card>
           <div className="p-5 space-y-4">
-            <h3 className="text-sm font-black text-mn-h3 uppercase tracking-wider">API Key</h3>
+            <h3 className="text-sm font-black text-mn-h3 uppercase tracking-wider">Server Credential</h3>
             <div className="p-3 bg-mn-info/5 border border-mn-info/30 rounded-lg text-xs text-mn-text-muted leading-relaxed">
-              Get a key from{' '}
+              Gemini keys are no longer stored in Firestore or shown in the browser. Create or rotate the key in{' '}
               <a
                 href="https://aistudio.google.com/apikey"
                 target="_blank"
@@ -488,33 +511,7 @@ function AISettingsTab() {
               >
                 Google AI Studio <ExternalLink className="w-3 h-3" />
               </a>
-              {' '}using the same Google account that owns the <strong className="text-mn-text">elite-build-crm</strong> project. Keys start with <code className="px-1 py-0.5 bg-mn-border/30 rounded">AIza...</code>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-black text-mn-h3 uppercase tracking-wider">Gemini API Key</label>
-              <div className="relative">
-                <input
-                  type={showKey ? 'text' : 'password'}
-                  value={config.api_key}
-                  onChange={e => setConfig(prev => ({ ...prev, api_key: e.target.value }))}
-                  placeholder="AIza..."
-                  className="w-full px-4 py-2.5 pr-11 bg-mn-input-bg border border-mn-input-border rounded-xl text-sm font-mono text-mn-text placeholder:text-mn-text-muted/50 focus:outline-none focus:border-mn-input-focus"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey(v => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-mn-text-muted hover:text-mn-text"
-                  title={showKey ? 'Hide key' : 'Show key'}
-                >
-                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              {config.api_key && !keyLooksValid && (
-                <p className="text-[11px] text-mn-warning">This doesn&apos;t look like a Gemini key — keys usually start with &quot;AIza&quot;.</p>
-              )}
+              {' '}and set it only as the server environment variable <code className="px-1 py-0.5 bg-mn-border/30 rounded">GEMINI_API_KEY</code>.
             </div>
 
             <div className="space-y-1.5">
@@ -530,11 +527,11 @@ function AISettingsTab() {
 
             <div className="flex items-center justify-between pt-2">
               <p className="text-[10px] text-mn-text-muted">
-                Key is stored in Firestore at <code className="px-1 py-0.5 bg-mn-border/30 rounded">crm_config/ai</code>.
+                Firestore stores only enabled/model settings at <code className="px-1 py-0.5 bg-mn-border/30 rounded">crm_config/ai</code>.
               </p>
               <Button
                 variant="secondary"
-                disabled={testing || !config.api_key}
+                disabled={testing}
                 onClick={handleTest}
                 icon={<Sparkles className="w-4 h-4" />}
               >
@@ -586,7 +583,8 @@ function TeamTab() {
   const [newRole, setNewRole] = useState<UserRole>('sales_exec');
   const [adding, setAdding] = useState(false);
 
-  // Only SuperAdmin can manage users (create / delete / change roles).
+  // Admins can onboard pending users. Super Admin keeps the stronger role/status controls.
+  const canOnboard = can(crmUser?.role, 'onboard_users');
   const canManage = can(crmUser?.role, 'manage_users');
   // Only SuperAdmin can promote someone else to SuperAdmin. Used below to
   // disable the role dropdown when the current row is a superadmin.
@@ -617,12 +615,22 @@ function TeamTab() {
   const handleAddMember = async () => {
     if (!newEmail.trim()) { showToast('error', 'Email is required.'); return; }
     if (!newName.trim()) { showToast('error', 'Name is required.'); return; }
+    const check = guardCanOnboardRole(crmUser, newRole);
+    if (!check.allowed) {
+      showToast('error', check.reason!);
+      return;
+    }
+    if (!assignableRoles.some(role => role.value === newRole)) {
+      showToast('error', 'You cannot onboard this role.');
+      return;
+    }
     setAdding(true);
     try {
+      const normalizedEmail = newEmail.trim().toLowerCase();
       // Use email as a temporary document ID — will be migrated to UID on first sign-in
-      const tempId = `pending_${newEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const tempId = `pending_${normalizedEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
       await setDoc(doc(db, 'users', tempId), {
-        email: newEmail.trim().toLowerCase(),
+        email: normalizedEmail,
         name: newName.trim(),
         role: newRole,
         active: true,
@@ -634,7 +642,7 @@ function TeamTab() {
       // Update local state
       setTeamMembers(prev => [...prev, {
         uid: tempId,
-        email: newEmail.trim().toLowerCase(),
+        email: normalizedEmail,
         name: newName.trim(),
         role: newRole,
         active: true,
@@ -645,7 +653,7 @@ function TeamTab() {
       setNewName('');
       setNewRole('sales_exec');
       setShowAddForm(false);
-      showToast('success', `${newName.trim()} added. They can now sign in with ${newEmail.trim()}.`);
+      showToast('success', `${newName.trim()} added. They can now sign in with ${normalizedEmail}.`);
     } catch (err) {
       console.error(err);
       showToast('error', 'Failed to add team member.');
@@ -703,13 +711,13 @@ function TeamTab() {
     }
   };
 
-  if (!canManage) {
+  if (!canOnboard && !canManage) {
     return (
       <div className="p-8 flex flex-col items-center justify-center h-full text-center">
         <Shield className="w-16 h-16 text-mn-border mb-4" />
-        <p className="font-bold text-lg text-mn-text-muted">Super Admin Access Required</p>
+        <p className="font-bold text-lg text-mn-text-muted">Admin Access Required</p>
         <p className="text-sm text-mn-text-muted/70 mt-1">
-          Only Super Admins can manage team members and roles.
+          Only Admins and Super Admins can view or onboard team members.
         </p>
       </div>
     );
@@ -724,12 +732,14 @@ function TeamTab() {
             <h2 className="text-lg font-black text-mn-h1">Team Members</h2>
             <p className="text-sm text-mn-text-muted">Manage who can access the CRM and what they can do.</p>
           </div>
-          <Button
-            icon={<UserPlus className="w-4 h-4" />}
-            onClick={() => setShowAddForm(true)}
-          >
-            Add Member
-          </Button>
+          {canOnboard && (
+            <Button
+              icon={<UserPlus className="w-4 h-4" />}
+              onClick={() => setShowAddForm(true)}
+            >
+              Add Member
+            </Button>
+          )}
         </div>
 
         {/* Add member form */}
@@ -848,10 +858,10 @@ function TeamTab() {
                   {/* Role selector */}
                   <div className="flex items-center gap-2">
                     <RoleIcon className="w-4 h-4 text-mn-h3" />
-                    <select
-                      value={member.role}
-                      onChange={e => handleRoleChange(member, e.target.value as UserRole)}
-                      disabled={isCurrentUser || (member.role === 'superadmin' && !canPromoteSuperAdmin)}
+                      <select
+                        value={member.role}
+                        onChange={e => handleRoleChange(member, e.target.value as UserRole)}
+                      disabled={!canManage || isCurrentUser || (member.role === 'superadmin' && !canPromoteSuperAdmin)}
                       className="px-3 py-1.5 bg-mn-input-bg border border-mn-input-border rounded-lg text-xs font-bold text-mn-text focus:outline-none focus:border-mn-input-focus disabled:opacity-50"
                     >
                       {/* Include the member's current role in the options (even superadmin, so the dropdown displays it) plus whatever this user can assign. */}
@@ -863,7 +873,7 @@ function TeamTab() {
                   </div>
 
                   {/* Actions */}
-                  {!isCurrentUser && (
+                  {canManage && !isCurrentUser && (
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleToggleActive(member)}
@@ -934,6 +944,603 @@ function TeamTab() {
   );
 }
 
+/* ==================== LEAD ASSIGNMENT TAB ==================== */
+function LeadAssignmentTab() {
+  const { showToast } = useToast();
+  const [config, setConfig] = useState<LeadAssignmentConfig>(DEFAULT_LEAD_ASSIGNMENT_CONFIG);
+  const [teamMembers, setTeamMembers] = useState<CRMUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [configSnap, usersSnap] = await Promise.all([
+          getDoc(doc(db, 'crm_config', 'lead_assignment')),
+          getDocs(collection(db, 'users')),
+        ]);
+        if (configSnap.exists()) {
+          setConfig({
+            ...DEFAULT_LEAD_ASSIGNMENT_CONFIG,
+            ...(configSnap.data() as Partial<LeadAssignmentConfig>),
+          });
+        }
+        const members = usersSnap.docs
+          .map(d => ({ uid: d.id, ...d.data() } as CRMUser))
+          .filter(member => member.active && member.role === 'sales_exec')
+          .sort(compareTeamMembers);
+        setTeamMembers(members);
+      } catch (err) {
+        console.error(err);
+        showToast('error', 'Failed to load lead assignment settings.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [showToast]);
+
+  const toggleUser = (uid: string) => {
+    setConfig(prev => ({
+      ...prev,
+      eligible_user_uids: prev.eligible_user_uids.includes(uid)
+        ? prev.eligible_user_uids.filter(item => item !== uid)
+        : [...prev.eligible_user_uids, uid],
+    }));
+  };
+
+  const addRule = () => {
+    const rule: LeadAssignmentRule = {
+      id: `rule_${Date.now()}`,
+      label: 'New Source Rule',
+      source_contains: '',
+      assignee_uids: [],
+      active: true,
+    };
+    setConfig(prev => ({ ...prev, source_rules: [...prev.source_rules, rule] }));
+  };
+
+  const updateRule = (ruleId: string, patch: Partial<LeadAssignmentRule>) => {
+    setConfig(prev => ({
+      ...prev,
+      source_rules: prev.source_rules.map(rule => rule.id === ruleId ? { ...rule, ...patch } : rule),
+    }));
+  };
+
+  const removeRule = (ruleId: string) => {
+    setConfig(prev => ({ ...prev, source_rules: prev.source_rules.filter(rule => rule.id !== ruleId) }));
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'crm_config', 'lead_assignment'), {
+        ...config,
+        eligible_roles: ['sales_exec'],
+        updated_at: serverTimestamp(),
+      }, { merge: true });
+      showToast('success', 'Lead assignment settings saved.');
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Failed to save lead assignment settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-mn-text-muted">Loading...</div>;
+
+  return (
+    <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-[10px] font-black text-mn-h3 uppercase tracking-[0.25em]">Sales Automation</p>
+          <h2 className="text-lg font-black text-mn-h1 mt-1">Lead Assignment</h2>
+          <p className="text-sm text-mn-text-muted">Assign new leads by source rules, round-robin, or lowest open workload.</p>
+        </div>
+        <Button icon={<Save className="w-4 h-4" />} disabled={saving} onClick={save}>
+          {saving ? 'Saving...' : 'Save Assignment'}
+        </Button>
+      </div>
+
+      <Card>
+        <div className="p-5 space-y-4">
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={config.enabled}
+              onChange={e => setConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+              className="h-4 w-4"
+            />
+            <div>
+              <p className="text-sm font-bold text-mn-text">Enable automatic assignment</p>
+              <p className="text-xs text-mn-text-muted">New walk-in and CSV leads will be assigned before saving.</p>
+            </div>
+          </label>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-[10px] font-black text-mn-h3 uppercase tracking-wider mb-1.5">Fallback Strategy</label>
+              <select
+                value={config.strategy}
+                onChange={e => setConfig(prev => ({ ...prev, strategy: e.target.value as LeadAssignmentConfig['strategy'] }))}
+                className="w-full px-4 py-2.5 bg-mn-input-bg border border-mn-input-border rounded-xl text-sm text-mn-text focus:outline-none focus:border-mn-input-focus"
+              >
+                <option value="workload">Lowest Open Workload</option>
+                <option value="round_robin">Round Robin</option>
+              </select>
+            </div>
+            <div className="rounded-xl border border-mn-border/30 bg-mn-surface p-3 text-xs text-mn-text-muted">
+              If no source rule matches, the CRM assigns to the selected sales executives using this fallback.
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="p-5 space-y-4">
+          <div>
+            <h3 className="text-sm font-black text-mn-h1">Eligible Sales Executives</h3>
+            <p className="text-xs text-mn-text-muted">Leave everyone unchecked to use all active sales executives.</p>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {teamMembers.map(member => (
+              <label key={member.uid} className="flex items-center gap-3 rounded-xl border border-mn-border/30 bg-mn-card p-3">
+                <input
+                  type="checkbox"
+                  checked={config.eligible_user_uids.includes(member.uid)}
+                  onChange={() => toggleUser(member.uid)}
+                  className="h-4 w-4"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-mn-text">{member.name}</p>
+                  <p className="truncate text-xs text-mn-text-muted">{member.email}</p>
+                </div>
+              </label>
+            ))}
+            {teamMembers.length === 0 && (
+              <p className="text-sm text-mn-text-muted">No active sales executives found.</p>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-black text-mn-h1">Source Rules</h3>
+              <p className="text-xs text-mn-text-muted">Example: source contains “Meta” routes to selected executives first.</p>
+            </div>
+            <Button variant="secondary" icon={<Plus className="w-4 h-4" />} onClick={addRule}>Add Rule</Button>
+          </div>
+
+          <div className="space-y-3">
+            {config.source_rules.map(rule => (
+              <div key={rule.id} className="rounded-xl border border-mn-border/30 bg-mn-card p-4 space-y-3">
+                <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                  <Input
+                    label="Rule Name"
+                    value={rule.label}
+                    onChange={e => updateRule(rule.id, { label: e.target.value })}
+                    placeholder="Meta leads"
+                  />
+                  <Input
+                    label="Source Contains"
+                    value={rule.source_contains}
+                    onChange={e => updateRule(rule.id, { source_contains: e.target.value })}
+                    placeholder="Meta"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeRule(rule.id)}
+                    className="self-end rounded-xl p-3 text-mn-danger hover:bg-mn-danger/10"
+                    title="Remove rule"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 text-xs font-bold text-mn-text">
+                  <input
+                    type="checkbox"
+                    checked={rule.active}
+                    onChange={e => updateRule(rule.id, { active: e.target.checked })}
+                  />
+                  Active
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {teamMembers.map(member => {
+                    const checked = rule.assignee_uids.includes(member.uid);
+                    return (
+                      <button
+                        key={member.uid}
+                        type="button"
+                        onClick={() => updateRule(rule.id, {
+                          assignee_uids: checked
+                            ? rule.assignee_uids.filter(uid => uid !== member.uid)
+                            : [...rule.assignee_uids, member.uid],
+                        })}
+                        className={`rounded-full border px-3 py-1 text-xs font-bold ${
+                          checked
+                            ? 'border-mn-h2 bg-mn-h2/15 text-mn-h2'
+                            : 'border-mn-border/40 text-mn-text-muted hover:border-mn-border'
+                        }`}
+                      >
+                        {member.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            {config.source_rules.length === 0 && (
+              <p className="rounded-xl border border-dashed border-mn-border p-6 text-center text-sm text-mn-text-muted">
+                No source rules yet. Fallback assignment will handle every new lead.
+              </p>
+            )}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ==================== LEAD SLA TAB ==================== */
+function LeadSLATab() {
+  const { showToast } = useToast();
+  const [config, setConfig] = useState<SLAConfig>(DEFAULT_SLA_CONFIG);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const snap = await getDoc(doc(db, 'crm_config', 'sla'));
+        if (snap.exists()) {
+          setConfig({
+            ...DEFAULT_SLA_CONFIG,
+            ...(snap.data() as Partial<SLAConfig>),
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('error', 'Failed to load SLA settings.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [showToast]);
+
+  const updateNumber = (key: keyof Pick<SLAConfig, 'first_call_minutes' | 'stale_lead_days' | 'no_follow_up_days' | 'missed_callback_minutes'>, value: string) => {
+    const parsed = Number(value);
+    setConfig(prev => ({
+      ...prev,
+      [key]: Number.isFinite(parsed) ? Math.max(0, parsed) : 0,
+    }));
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'crm_config', 'sla'), {
+        ...config,
+        updated_at: serverTimestamp(),
+      }, { merge: true });
+      showToast('success', 'Lead SLA settings saved.');
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Failed to save SLA settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-mn-text-muted">Loading...</div>;
+
+  return (
+    <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-[10px] font-black text-mn-h3 uppercase tracking-[0.25em]">Sales Automation</p>
+          <h2 className="text-lg font-black text-mn-h1 mt-1">Lead SLA</h2>
+          <p className="text-sm text-mn-text-muted">Show overdue first calls, missed callbacks, and stale leads on the Kanban board.</p>
+        </div>
+        <Button icon={<Save className="w-4 h-4" />} disabled={saving} onClick={save}>
+          {saving ? 'Saving...' : 'Save SLA'}
+        </Button>
+      </div>
+
+      <Card>
+        <div className="p-5 space-y-4">
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={config.enabled}
+              onChange={e => setConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+              className="h-4 w-4"
+            />
+            <div>
+              <p className="text-sm font-bold text-mn-text">Enable lead SLA alerts</p>
+              <p className="text-xs text-mn-text-muted">Closed, booked, and rejected leads are ignored automatically.</p>
+            </div>
+          </label>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Input
+              label="First Call SLA (minutes)"
+              type="number"
+              min="0"
+              value={config.first_call_minutes}
+              onChange={e => updateNumber('first_call_minutes', e.target.value)}
+            />
+            <Input
+              label="Missed Callback Grace (minutes)"
+              type="number"
+              min="0"
+              value={config.missed_callback_minutes}
+              onChange={e => updateNumber('missed_callback_minutes', e.target.value)}
+            />
+            <Input
+              label="Follow-up Due After (days)"
+              type="number"
+              min="0"
+              value={config.no_follow_up_days}
+              onChange={e => updateNumber('no_follow_up_days', e.target.value)}
+            />
+            <Input
+              label="Stale Lead After (days)"
+              type="number"
+              min="0"
+              value={config.stale_lead_days}
+              onChange={e => updateNumber('stale_lead_days', e.target.value)}
+            />
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ==================== NURTURE SEQUENCES TAB ==================== */
+function NurtureSequencesTab() {
+  const { showToast } = useToast();
+  const [config, setConfig] = useState<NurtureConfig>(DEFAULT_NURTURE_CONFIG);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const snap = await getDoc(doc(db, 'crm_config', 'nurture'));
+        if (snap.exists()) {
+          setConfig({
+            ...DEFAULT_NURTURE_CONFIG,
+            ...(snap.data() as Partial<NurtureConfig>),
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('error', 'Failed to load nurture settings.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [showToast]);
+
+  const updateNumber = (key: keyof Pick<NurtureConfig, 'welcome_delay_minutes' | 'property_match_follow_up_days' | 'site_visit_reminder_hours_before' | 'post_site_visit_follow_up_hours_after' | 'old_lead_reactivation_days' | 'no_response_follow_up_days'>, value: string) => {
+    const parsed = Number(value);
+    setConfig(prev => ({
+      ...prev,
+      [key]: Number.isFinite(parsed) ? Math.max(0, parsed) : 0,
+    }));
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'crm_config', 'nurture'), {
+        ...config,
+        updated_at: serverTimestamp(),
+      }, { merge: true });
+      showToast('success', 'Nurture sequence settings saved.');
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Failed to save nurture settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-mn-text-muted">Loading...</div>;
+
+  return (
+    <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-[10px] font-black text-mn-h3 uppercase tracking-[0.25em]">Sales Automation</p>
+          <h2 className="text-lg font-black text-mn-h1 mt-1">Nurture Sequences</h2>
+          <p className="text-sm text-mn-text-muted">Configure suggested follow-ups. The CRM creates tasks; it does not auto-send messages.</p>
+        </div>
+        <Button icon={<Save className="w-4 h-4" />} disabled={saving} onClick={save}>
+          {saving ? 'Saving...' : 'Save Nurture'}
+        </Button>
+      </div>
+
+      <Card>
+        <div className="p-5 space-y-5">
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={config.enabled}
+              onChange={e => setConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+              className="h-4 w-4"
+            />
+            <div>
+              <p className="text-sm font-bold text-mn-text">Enable nurture suggestions</p>
+              <p className="text-xs text-mn-text-muted">Suggestions appear on Overdue Tasks for human approval.</p>
+            </div>
+          </label>
+
+          <div className="rounded-2xl border border-mn-border/35 bg-mn-surface p-4 space-y-4">
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={config.welcome_enabled}
+                onChange={e => setConfig(prev => ({ ...prev, welcome_enabled: e.target.checked }))}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-bold text-mn-text">New lead welcome message</p>
+                <p className="text-xs text-mn-text-muted">Suggest a WhatsApp welcome message for newly captured leads.</p>
+              </div>
+            </label>
+
+            <div className="max-w-sm">
+              <Input
+                label="Suggest Welcome After (minutes)"
+                type="number"
+                min="0"
+                value={config.welcome_delay_minutes}
+                onChange={e => updateNumber('welcome_delay_minutes', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-mn-border/35 bg-mn-surface p-4 space-y-4">
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={config.no_response_follow_up_enabled}
+                onChange={e => setConfig(prev => ({ ...prev, no_response_follow_up_enabled: e.target.checked }))}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-bold text-mn-text">No-response WhatsApp follow-up</p>
+                <p className="text-xs text-mn-text-muted">Suggest a WhatsApp follow-up when a lead goes quiet after the last outbound touch.</p>
+              </div>
+            </label>
+
+            <div className="max-w-sm">
+              <Input
+                label="Suggest After Silence (days)"
+                type="number"
+                min="0"
+                value={config.no_response_follow_up_days}
+                onChange={e => updateNumber('no_response_follow_up_days', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-mn-border/35 bg-mn-surface p-4 space-y-4">
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={config.property_match_follow_up_enabled}
+                onChange={e => setConfig(prev => ({ ...prev, property_match_follow_up_enabled: e.target.checked }))}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-bold text-mn-text">Property match follow-up</p>
+                <p className="text-xs text-mn-text-muted">Suggest a follow-up after matched property details were sent and the lead goes quiet.</p>
+              </div>
+            </label>
+
+            <div className="max-w-sm">
+              <Input
+                label="Suggest After Match Silence (days)"
+                type="number"
+                min="0"
+                value={config.property_match_follow_up_days}
+                onChange={e => updateNumber('property_match_follow_up_days', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-mn-border/35 bg-mn-surface p-4 space-y-4">
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={config.site_visit_reminder_enabled}
+                onChange={e => setConfig(prev => ({ ...prev, site_visit_reminder_enabled: e.target.checked }))}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-bold text-mn-text">Site visit reminder</p>
+                <p className="text-xs text-mn-text-muted">Suggest a reminder message before a scheduled site visit.</p>
+              </div>
+            </label>
+
+            <div className="max-w-sm">
+              <Input
+                label="Suggest Before Visit (hours)"
+                type="number"
+                min="0"
+                value={config.site_visit_reminder_hours_before}
+                onChange={e => updateNumber('site_visit_reminder_hours_before', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-mn-border/35 bg-mn-surface p-4 space-y-4">
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={config.post_site_visit_follow_up_enabled}
+                onChange={e => setConfig(prev => ({ ...prev, post_site_visit_follow_up_enabled: e.target.checked }))}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-bold text-mn-text">Post-site-visit follow-up</p>
+                <p className="text-xs text-mn-text-muted">Suggest a follow-up after the visit to capture buyer feedback, objections, and next steps.</p>
+              </div>
+            </label>
+
+            <div className="max-w-sm">
+              <Input
+                label="Suggest After Visit (hours)"
+                type="number"
+                min="0"
+                value={config.post_site_visit_follow_up_hours_after}
+                onChange={e => updateNumber('post_site_visit_follow_up_hours_after', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-mn-border/35 bg-mn-surface p-4 space-y-4">
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={config.old_lead_reactivation_enabled}
+                onChange={e => setConfig(prev => ({ ...prev, old_lead_reactivation_enabled: e.target.checked }))}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-bold text-mn-text">Old lead reactivation</p>
+                <p className="text-xs text-mn-text-muted">Suggest reactivation for inactive non-terminal leads that have no more specific task.</p>
+              </div>
+            </label>
+
+            <div className="max-w-sm">
+              <Input
+                label="Reactivate After Inactivity (days)"
+                type="number"
+                min="0"
+                value={config.old_lead_reactivation_days}
+                onChange={e => updateNumber('old_lead_reactivation_days', e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 /* ==================== BRANDING TAB ==================== */
 function BrandingTab() {
   const { showToast } = useToast();
@@ -944,7 +1551,7 @@ function BrandingTab() {
   const [tagline, setTagline] = useState('');
   const [logo, setLogo] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
-  const [primaryColor, setPrimaryColor] = useState('#2563eb');
+  const [primaryColor, setPrimaryColor] = useState('#555856');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [website, setWebsite] = useState('');
@@ -959,7 +1566,7 @@ function BrandingTab() {
           setTagline(d.tagline || '');
           setLogo(d.logo || null);
           setBanner(d.banner || null);
-          setPrimaryColor(d.primaryColor || '#2563eb');
+          setPrimaryColor(d.primaryColor || '#555856');
           setPhone(d.phone || '');
           setEmail(d.email || '');
           setWebsite(d.website || '');
@@ -986,7 +1593,8 @@ function BrandingTab() {
         email: email.trim(),
         website: website.trim(),
         updated_at: serverTimestamp(),
-      });
+      }, { merge: true });
+      notifyBrandingUpdated();
       showToast('success', 'Branding saved successfully.');
     } catch (err) {
       console.error(err);
@@ -1079,16 +1687,20 @@ function BrandingTab() {
               value={logo}
               onChange={setLogo}
               folder="branding"
+              helperText="Square logo, minimum 512 x 512px."
             />
             <ImageUpload
               label="Banner Image"
               value={banner}
               onChange={setBanner}
               folder="branding"
+              helperText="Minimum 1600 x 900px, landscape. Use a real high-resolution background image, not a small logo or screenshot."
+              minWidth={1600}
+              minHeight={900}
             />
           </div>
           <p className="text-[10px] text-mn-text-muted mt-3">
-            Logo: Square, at least 200x200px. Banner: Landscape, at least 1200x400px.
+            Banner images are used as full-bleed backgrounds. Low-resolution images will be rejected to avoid blurry or oversized rendering.
           </p>
         </Card>
 

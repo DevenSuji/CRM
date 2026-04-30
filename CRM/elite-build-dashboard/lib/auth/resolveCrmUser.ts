@@ -1,11 +1,17 @@
 import {
   doc,
   getDoc,
+  collection,
+  getDocs,
+  query,
+  where,
   setDoc,
   deleteDoc,
   updateDoc,
   serverTimestamp,
   Firestore,
+  DocumentReference,
+  DocumentSnapshot,
 } from 'firebase/firestore';
 import { CRMUser, UserRole } from '@/lib/types/user';
 
@@ -31,6 +37,44 @@ function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
     if (v !== undefined) out[k] = v;
   }
   return out as T;
+}
+
+function pendingUserIdForEmail(email: string): string {
+  return `pending_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+}
+
+function isPendingUserDoc(id: string, data: Record<string, unknown>): boolean {
+  return id.startsWith('pending_') || data.pending_registration === true || data.pending_invite === true;
+}
+
+function pendingDocMatchesEmail(data: Record<string, unknown>, email: string): boolean {
+  const pendingEmail = typeof data.email === 'string' ? data.email.toLowerCase() : '';
+  return !pendingEmail || pendingEmail === email;
+}
+
+async function findPendingUserDoc(
+  db: Firestore,
+  email: string
+): Promise<{ id: string; ref: DocumentReference; snap: DocumentSnapshot } | null> {
+  const exactId = pendingUserIdForEmail(email);
+  const exactRef = doc(db, 'users', exactId);
+  const exactSnap = await getDoc(exactRef);
+  if (exactSnap.exists()) {
+    const data = exactSnap.data() as Record<string, unknown>;
+    if (pendingDocMatchesEmail(data, email)) {
+      return { id: exactId, ref: exactRef, snap: exactSnap };
+    }
+  }
+
+  const candidates = await getDocs(query(collection(db, 'users'), where('email', '==', email)));
+  for (const candidate of candidates.docs) {
+    const data = candidate.data() as Record<string, unknown>;
+    if (isPendingUserDoc(candidate.id, data) && pendingDocMatchesEmail(data, email)) {
+      return { id: candidate.id, ref: candidate.ref, snap: candidate };
+    }
+  }
+
+  return null;
 }
 
 /** Resolves the CRM user profile for a signed-in Firebase user. Encodes every
@@ -67,15 +111,14 @@ export async function resolveCrmUser(
     }
 
     // No doc by UID — look for a pre-registered pending doc.
-    const pendingId = `pending_${userEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    const pendingDoc = await getDoc(doc(db, 'users', pendingId));
+    const pendingProfile = await findPendingUserDoc(db, userEmail);
 
-    if (pendingDoc.exists()) {
-      const pendingData = pendingDoc.data();
+    if (pendingProfile) {
+      const pendingData = pendingProfile.snap.data() as Record<string, unknown>;
       const migrated: Omit<CRMUser, 'uid'> = {
         email: userEmail,
-        name: pendingData.name || fbUser.displayName || userEmail,
-        role: pendingData.role || 'sales_exec',
+        name: String(pendingData.name || fbUser.displayName || userEmail),
+        role: (pendingData.role || 'sales_exec') as UserRole,
         active: true,
         photo_url: fbUser.photoURL || undefined,
         created_at: null,
@@ -84,7 +127,7 @@ export async function resolveCrmUser(
         ...migrated,
         created_at: pendingData.created_at || serverTimestamp(),
       }));
-      await deleteDoc(doc(db, 'users', pendingId));
+      await deleteDoc(pendingProfile.ref);
       return { kind: 'ok', user: { uid: fbUser.uid, ...migrated } };
     }
 

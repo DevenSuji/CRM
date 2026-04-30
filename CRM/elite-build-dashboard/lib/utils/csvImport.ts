@@ -1,5 +1,7 @@
 import { Timestamp } from 'firebase/firestore';
 import type { LeadRawData } from '@/lib/types/lead';
+import { buildDuplicateKeys, type LeadDuplicateKeys } from '@/lib/utils/leadDuplicates';
+import { normalizeLeadSource } from '@/lib/utils/leadSourceHygiene';
 
 export interface CSVRow {
   lead_name?: string; name?: string; full_name?: string;
@@ -92,7 +94,9 @@ export interface NormalizedLead {
   status: 'New';
   created_at: Timestamp;
   source: string;
+  source_normalized: string;
   owner_uid: string | null;
+  duplicate_keys: LeadDuplicateKeys;
   raw_data: LeadRawData;
 }
 
@@ -100,22 +104,28 @@ export interface NormalizedLead {
  *  Call sites should filter with `isValidRow` before calling this. */
 export function normalizeLead(row: CSVRow, opts: NormalizeOptions = {}): NormalizedLead {
   const budgetNum = Number(row.budget);
+  const rawData: LeadRawData = {
+    lead_name: getLeadName(row),
+    phone: getPhone(row),
+    email: getEmail(row),
+    budget: Number.isFinite(budgetNum) ? budgetNum : 0,
+    plan_to_buy: row.plan_to_buy || row.timeline || 'Not Specified',
+    profession: row.profession || 'Not Specified',
+    location: row.location || 'Unknown',
+    note: row.note || row.notes || 'Imported from CSV',
+    pref_facings: [],
+    interest: row.interest || 'General Query',
+  };
+
+  const source = row.source || (opts.role === 'channel_partner' ? 'Channel Partner CSV' : 'CSV Import');
+
   return {
     status: 'New',
     created_at: Timestamp.now(),
-    source: row.source || (opts.role === 'channel_partner' ? 'Channel Partner CSV' : 'CSV Import'),
+    source,
+    source_normalized: normalizeLeadSource(source),
     owner_uid: opts.uid || null,
-    raw_data: {
-      lead_name: getLeadName(row),
-      phone: getPhone(row),
-      email: getEmail(row),
-      budget: Number.isFinite(budgetNum) ? budgetNum : 0,
-      plan_to_buy: row.plan_to_buy || row.timeline || 'Not Specified',
-      profession: row.profession || 'Not Specified',
-      location: row.location || 'Unknown',
-      note: row.note || row.notes || 'Imported from CSV',
-      pref_facings: [],
-      interest: row.interest || 'General Query',
-    },
+    duplicate_keys: buildDuplicateKeys(rawData),
+    raw_data: rawData,
   };
 }

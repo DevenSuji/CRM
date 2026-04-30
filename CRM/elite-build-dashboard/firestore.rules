@@ -25,10 +25,103 @@ service cloud.firestore {
     function isChannelPartner() { return isActive() && crmUser().role == 'channel_partner'; }
     function isDigitalMarketing() { return isActive() && crmUser().role == 'digital_marketing'; }
     function isViewer()     { return isActive() && crmUser().role == 'viewer'; }
-
     // Derived checks used frequently
     function canAdminister() { return isSuperAdmin() || isAdmin(); }
-    function canManageLeads() { return isSuperAdmin() || isAdmin() || isSalesExec(); }
+    function isLeadAssignedToCurrentUser(data) {
+      return data.get('assigned_to', null) == request.auth.uid;
+    }
+    function isLeadUnassigned(data) {
+      return data.get('assigned_to', null) == null;
+    }
+    function hasNormalizedNonChannelPartnerSource(data) {
+      return data.keys().hasAny(['source_normalized'])
+        && data.source_normalized != 'Channel Partner';
+    }
+    function canSalesExecReadLeadData(data) {
+      return isSalesExec()
+        && (
+          isLeadAssignedToCurrentUser(data)
+          || (isLeadUnassigned(data) && hasNormalizedNonChannelPartnerSource(data))
+        );
+    }
+    function canReadLeadResource() {
+      return canAdminister() || isViewer() || canSalesExecReadLeadData(resource.data)
+        || (isChannelPartner() && resource.data.owner_uid == request.auth.uid);
+    }
+    function canReadLeadId(leadId) {
+      return canAdminister() || isViewer()
+        || (
+          isSalesExec()
+          && exists(/databases/$(database)/documents/leads/$(leadId))
+          && canSalesExecReadLeadData(get(/databases/$(database)/documents/leads/$(leadId)).data)
+        )
+        || (
+          isChannelPartner()
+          && exists(/databases/$(database)/documents/leads/$(leadId))
+          && get(/databases/$(database)/documents/leads/$(leadId)).data.owner_uid == request.auth.uid
+        );
+    }
+    function canReadWhatsAppConversationData(data) {
+      return canAdminister()
+        || (
+          isSalesExec()
+          && data.keys().hasAny(['assigned_to'])
+          && data.assigned_to == request.auth.uid
+        );
+    }
+    function canViewAllProjects() {
+      return isSuperAdmin() || isAdmin() || isSalesExec() || isDigitalMarketing() || isViewer();
+    }
+    function projectDataAssignedToChannelPartner(data) {
+      return isChannelPartner()
+        && data.keys().hasAny(['channel_partner_uids'])
+        && data.channel_partner_uids.hasAny([request.auth.uid]);
+    }
+    function canReadProjectResource() {
+      return canViewAllProjects() || projectDataAssignedToChannelPartner(resource.data);
+    }
+    function canReadProjectId(projectId) {
+      return canViewAllProjects()
+        || (
+          isChannelPartner()
+          && exists(/databases/$(database)/documents/projects/$(projectId))
+          && projectDataAssignedToChannelPartner(get(/databases/$(database)/documents/projects/$(projectId)).data)
+        );
+    }
+    function canReadCrmConfig(configId) {
+      return isActive()
+        && !(configId in ['ai', 'whatsapp', 'lead_assignment', '_user_count'])
+        && (
+          !isChannelPartner()
+          || configId in ['branding', 'kanban', 'lead_card_colors', 'property_match', 'sla']
+        );
+    }
+    function pendingUserEmailMatchesAuth() {
+      return isAuth()
+        && resource.data.email is string
+        && request.auth.token.email is string
+        && resource.data.email == request.auth.token.email;
+    }
+    function ownUserProfileUpdateIsSafe() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'name', 'photo_url'
+      ]);
+    }
+    function validPendingUserCreate(userId) {
+      return userId.matches('pending_.*')
+        && request.resource.data.keys().hasOnly([
+          'email', 'name', 'role', 'active', 'photo_url', 'created_at', 'pending_registration'
+        ])
+        && request.resource.data.email is string
+        && request.resource.data.name is string
+        && request.resource.data.role in [
+          'admin', 'sales_exec', 'digital_marketing', 'channel_partner',
+          'hr', 'payroll_finance', 'viewer'
+        ]
+        && request.resource.data.active == true
+        && request.resource.data.pending_registration == true
+        && (!request.resource.data.keys().hasAny(['photo_url']) || request.resource.data.photo_url is string);
+    }
 
     // Campaign-only update: every other top-level field on the project
     // must be identical to the pre-write state.
@@ -36,66 +129,281 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['campaigns', 'updated_at']);
     }
 
+    function validProjectType(value) {
+      return value in [
+        'Plotted Land', 'Apartment', 'Villa', 'Individual House',
+        'Commercial Building', 'Commercial Land', 'Managed Farmland',
+        'Agricultural Land', 'Industrial Building', 'Industrial Land'
+      ];
+    }
+
+    function validProjectStatus(value) {
+      return value in ['Active', 'Upcoming', 'Sold Out'];
+    }
+
+    function validLeadStatus(value) {
+      return value in ['New', 'First Call', 'Nurturing', 'Property Matched', 'Site Visit', 'Booked', 'Closed', 'Rejected'];
+    }
+
+    function safeLeadStatusValue(changed) {
+      return !changed.hasAny(['status']) || validLeadStatus(request.resource.data.status);
+    }
+
+    function safeSourceNormalizedValue(changed) {
+      return !changed.hasAny(['source_normalized']) || request.resource.data.source_normalized is string;
+    }
+
+    function safeProjectValues() {
+      return (!request.resource.data.keys().hasAny(['name']) || request.resource.data.name is string)
+        && (!request.resource.data.keys().hasAny(['builder']) || request.resource.data.builder is string)
+        && (!request.resource.data.keys().hasAny(['location']) || request.resource.data.location is string)
+        && (!request.resource.data.keys().hasAny(['propertyType']) || validProjectType(request.resource.data.propertyType))
+        && (!request.resource.data.keys().hasAny(['status']) || validProjectStatus(request.resource.data.status))
+        && (!request.resource.data.keys().hasAny(['heroImage']) || request.resource.data.heroImage is string || request.resource.data.heroImage == null)
+        && (!request.resource.data.keys().hasAny(['gallery']) || request.resource.data.gallery is list)
+        && (!request.resource.data.keys().hasAny(['totalUnits']) || request.resource.data.totalUnits is number)
+        && (!request.resource.data.keys().hasAny(['priceRange']) || request.resource.data.priceRange is map || request.resource.data.priceRange == null)
+        && (!request.resource.data.keys().hasAny(['project_fields']) || request.resource.data.project_fields is map)
+        && (!request.resource.data.keys().hasAny(['channel_partner_uids']) || request.resource.data.channel_partner_uids is list)
+        && (!request.resource.data.keys().hasAny(['campaigns']) || request.resource.data.campaigns is list)
+        && (!request.resource.data.keys().hasAny(['geo']) || request.resource.data.geo is map);
+    }
+
+    function safeAdminProjectCreate() {
+      return request.resource.data.keys().hasOnly([
+          'name', 'builder', 'location', 'propertyType', 'status',
+          'heroImage', 'gallery', 'totalUnits', 'priceRange',
+          'project_fields', 'channel_partner_uids', 'campaigns', 'geo',
+          'created_at', 'updated_at'
+        ])
+        && request.resource.data.keys().hasAll(['name', 'builder', 'location', 'propertyType', 'status'])
+        && safeProjectValues();
+    }
+
+    function safeAdminProjectUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'builder', 'location', 'propertyType', 'status',
+          'heroImage', 'gallery', 'project_fields', 'channel_partner_uids',
+          'campaigns', 'geo', 'updated_at'
+        ])
+        && safeProjectValues();
+    }
+
+    function safeAdminInventoryCreate() {
+      return request.resource.data.keys().hasOnly([
+          'projectId', 'projectName', 'location', 'propertyType', 'builder',
+          'status', 'price', 'fields', 'created_at', 'updated_at'
+        ])
+        && request.resource.data.keys().hasAll(['projectId', 'status', 'price', 'fields'])
+        && request.resource.data.projectId is string
+        && request.resource.data.status == 'Available'
+        && request.resource.data.price is number
+        && request.resource.data.fields is map;
+    }
+
+    function safeAdminInventoryUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'fields', 'price', 'updated_at'
+        ])
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['price'])
+          || request.resource.data.price is number
+        )
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['fields'])
+          || request.resource.data.fields is map
+        );
+    }
+
+    function safeAdminInventoryDelete() {
+      return resource.data.status == 'Available'
+        && (
+          !resource.data.keys().hasAny(['booked_by_lead_id'])
+          || resource.data.booked_by_lead_id == null
+        );
+    }
+
+    function safeChannelPartnerLeadCreate() {
+      return request.resource.data.keys().hasOnly([
+          'status', 'created_at', 'source', 'source_normalized', 'owner_uid',
+          'duplicate_keys', 'raw_data', 'assigned_to', 'activity_log'
+        ])
+        && request.resource.data.owner_uid == request.auth.uid
+        && request.resource.data.status == 'New'
+        && (
+          request.resource.data.source == 'Channel Partner'
+          || request.resource.data.source == 'Channel Partner CSV'
+        )
+        && (
+          !request.resource.data.keys().hasAny(['assigned_to'])
+          || request.resource.data.assigned_to == request.auth.uid
+        );
+    }
+
+    function safeSalesExecLeadCreate() {
+      return request.resource.data.keys().hasOnly([
+          'status', 'created_at', 'source', 'source_normalized', 'owner_uid',
+          'duplicate_keys', 'raw_data', 'assigned_to', 'activity_log'
+        ])
+        && request.resource.data.owner_uid == request.auth.uid
+        && request.resource.data.status == 'New'
+        && hasNormalizedNonChannelPartnerSource(request.resource.data)
+        && (
+          !request.resource.data.keys().hasAny(['assigned_to'])
+          || request.resource.data.assigned_to == null
+          || request.resource.data.assigned_to == request.auth.uid
+        );
+    }
+
+    function bookingStatusChanged() {
+      return request.resource.data.status != resource.data.status
+        && (
+          request.resource.data.status == 'Booked'
+          || resource.data.status == 'Booked'
+        );
+    }
+
+    function isChannelPartnerLeadData(data) {
+      return data.get('source_normalized', '') == 'Channel Partner'
+        || data.get('source', '') in ['Channel Partner', 'Channel Partner CSV'];
+    }
+
+    function canSalesExecUpdateLeadData(changed) {
+      return isLeadAssignedToCurrentUser(resource.data)
+        || (
+          isLeadUnassigned(resource.data)
+          && hasNormalizedNonChannelPartnerSource(resource.data)
+          && changed.hasOnly(['assigned_to', 'activity_log'])
+        );
+    }
+
+    function safeSalesExecLeadUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return canSalesExecUpdateLeadData(changed)
+        && changed.hasOnly([
+          'status', 'raw_data', 'duplicate_keys', 'interested_properties',
+          'dismissed_matches', 'match_threshold', 'callback_requests',
+          'site_visits', 'activity_log', 'objections', 'lane_moved_at',
+          'card_color', 'assigned_to'
+        ])
+        && safeLeadStatusValue(changed)
+        && !bookingStatusChanged()
+        && (
+          !changed.hasAny(['assigned_to'])
+          || (
+            request.resource.data.assigned_to == request.auth.uid
+            && (
+              !resource.data.keys().hasAny(['assigned_to'])
+              || resource.data.assigned_to == null
+            )
+            && !isChannelPartnerLeadData(resource.data)
+          )
+        );
+    }
+
+    function safeAdminLeadUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return changed.hasOnly([
+          'status', 'raw_data', 'duplicate_keys', 'interested_properties',
+          'dismissed_matches', 'match_threshold', 'callback_requests',
+          'site_visits', 'activity_log', 'objections', 'lane_moved_at',
+          'card_color', 'assigned_to', 'source_normalized'
+        ])
+        && safeLeadStatusValue(changed)
+        && safeSourceNormalizedValue(changed)
+        && !bookingStatusChanged();
+    }
+
+    function safeChannelPartnerLeadUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return request.resource.data.owner_uid == request.auth.uid
+        && changed.hasOnly([
+          'status', 'raw_data', 'duplicate_keys', 'interested_properties',
+          'dismissed_matches', 'match_threshold', 'callback_requests',
+          'site_visits', 'activity_log', 'objections', 'lane_moved_at',
+          'card_color', 'assigned_to'
+        ])
+        && safeLeadStatusValue(changed)
+        && !bookingStatusChanged()
+        && (
+          !changed.hasAny(['assigned_to'])
+          || (
+            request.resource.data.assigned_to == request.auth.uid
+            && (
+              !resource.data.keys().hasAny(['assigned_to'])
+              || resource.data.assigned_to == null
+              || resource.data.assigned_to == request.auth.uid
+            )
+          )
+        );
+    }
+
     // ============================================================
     // LEADS COLLECTION
     // SuperAdmin / Admin: full CRUD
-    // Sales Exec: read all, create/update, no delete
+    // Sales Exec: own assigned leads + unassigned non-channel-partner leads,
+    //             create safe own leads, self-assign eligible unassigned leads.
     // Channel Partner: read/create/update only their own (owner_uid == uid)
     // Viewer: read all, no writes
     // HR / Payroll & Finance: no access
     // ============================================================
     match /leads/{leadId} {
-      allow read: if canManageLeads() || isViewer()
-        || (isChannelPartner() && resource.data.owner_uid == request.auth.uid);
+      allow read: if canReadLeadResource();
 
       // Sales exec / admin / superadmin can create any lead.
-      allow create: if canManageLeads();
+      allow create: if canAdminister();
+      allow create: if isSalesExec() && safeSalesExecLeadCreate();
 
       // Channel partners can create leads, but only with owner_uid == self.
-      allow create: if isChannelPartner()
-        && request.resource.data.owner_uid == request.auth.uid;
+      allow create: if isChannelPartner() && safeChannelPartnerLeadCreate();
 
-      allow update: if canManageLeads();
+      allow update: if canAdminister() && safeAdminLeadUpdate();
+      allow update: if isSalesExec() && safeSalesExecLeadUpdate();
       allow update: if isChannelPartner()
         && resource.data.owner_uid == request.auth.uid
-        && request.resource.data.owner_uid == request.auth.uid;
+        && safeChannelPartnerLeadUpdate();
 
-      allow delete: if canAdminister();
+      // No client-side hard deletes. Admin SDK lifecycle routes archive/merge
+      // leads so audit history remains available for reporting and recovery.
+      allow delete: if false;
     }
 
     // ============================================================
     // USERS COLLECTION
     // SuperAdmin: full CRUD over everyone
     // Any auth'd user: read/create own doc (for first-login / pending migration)
-    // Admin: read team list (but NOT write — role management is SuperAdmin-only)
+    // Admin: read team list and create pending non-Super-Admin users.
+    // Role/status edits and deletes remain SuperAdmin-only.
     // ============================================================
     match /users/{userId} {
       // Own-doc reads (any auth'd user)
       allow read: if isAuth() && (
-        request.auth.uid == userId ||
-        userId.matches('pending_.*')
+        request.auth.uid == userId
       );
+      // A pre-registered user may read only their own pending doc during migration.
+      allow read: if userId.matches('pending_.*') && pendingUserEmailMatchesAuth();
       // Admins + SuperAdmins can see the full team list.
       allow read: if canAdminister();
 
-      // First-login / pending migration creates
-      allow create: if isAuth() && (
-        request.auth.uid == userId ||
-        userId.matches('pending_.*')
-      );
+      // Browser clients cannot bootstrap real user docs. The server-side
+      // Admin SDK login resolver owns first-user/root bootstrap and pending
+      // profile migration so clients cannot self-promote in a fresh project.
+      // Admins can onboard pending non-Super-Admin users. The real UID doc is
+      // created later by the server-side login resolver.
+      allow create: if canAdminister() && validPendingUserCreate(userId);
       // SuperAdmin can create any user doc (pre-registration)
       allow create: if isSuperAdmin();
 
-      // A user can update their own doc (limited fields — we don't guard this
-      // here because UIs don't expose role/active edits for self; tighten later
-      // if abuse is seen).
-      allow update: if isAuth() && request.auth.uid == userId;
+      // Users can edit only profile-display fields on their own doc.
+      allow update: if isActive()
+        && request.auth.uid == userId
+        && ownUserProfileUpdateIsSafe();
 
       // Only SuperAdmin can change roles / active state / delete for others.
       allow update, delete: if isSuperAdmin();
 
-      // Allow deleting pending docs during migration
-      allow delete: if isAuth() && userId.matches('pending_.*');
+      // Allow a pre-registered user to remove only their own pending doc during migration.
+      allow delete: if userId.matches('pending_.*') && pendingUserEmailMatchesAuth();
     }
 
     // ============================================================
@@ -105,20 +413,30 @@ service cloud.firestore {
     // Digital Marketing: may update ONLY the `campaigns` field (and updated_at)
     // ============================================================
     match /projects/{projectId} {
-      allow read: if isActive();
-      allow create, delete: if canAdminister();
-      allow update: if canAdminister();
-      allow update: if isDigitalMarketing() && onlyCampaignsChanged();
+      allow read: if canReadProjectResource();
+      allow create: if canAdminister() && safeAdminProjectCreate();
+      allow update: if exists(/databases/$(database)/documents/projects/$(projectId))
+        && canAdminister()
+        && safeAdminProjectUpdate();
+      allow delete: if canAdminister();
+      allow update: if exists(/databases/$(database)/documents/projects/$(projectId))
+        && isDigitalMarketing()
+        && onlyCampaignsChanged();
     }
 
     // ============================================================
     // INVENTORY COLLECTION
-    // All active users: read
-    // SuperAdmin / Admin: full CRUD
+    // Project-scoped reads.
+    // Admin browser writes may maintain available-unit details only.
+    // Booking/sold lifecycle state is controlled by Admin SDK lead routes.
     // ============================================================
     match /inventory/{unitId} {
-      allow read: if isActive();
-      allow create, update, delete: if canAdminister();
+      allow read: if canReadProjectId(resource.data.projectId);
+      allow create: if canAdminister() && safeAdminInventoryCreate();
+      allow update: if exists(/databases/$(database)/documents/inventory/$(unitId))
+        && canAdminister()
+        && safeAdminInventoryUpdate();
+      allow delete: if canAdminister() && safeAdminInventoryDelete();
     }
 
     // ============================================================
@@ -127,11 +445,11 @@ service cloud.firestore {
     // No client writes; server-side functions persist these docs
     // ============================================================
     match /reverse_match_projects/{projectId} {
-      allow read: if isActive();
+      allow read: if canAdminister();
     }
 
     match /reverse_match_units/{unitId} {
-      allow read: if isActive();
+      allow read: if canAdminister();
     }
 
     // ============================================================
@@ -140,40 +458,73 @@ service cloud.firestore {
     // No client writes; server-side functions persist these docs
     // ============================================================
     match /no_match_intelligence/{leadId} {
-      allow read: if isActive();
+      allow read: if canReadLeadId(leadId);
     }
 
     match /demand_gap_reports/{reportId} {
-      allow read: if isActive();
+      allow read: if canAdminister();
+    }
+
+    // ============================================================
+    // WHATSAPP MESSAGE LOG
+    // Server-side webhook/API routes write these docs. Sales/admin users can
+    // read for timelines/inbox; no client writes.
+    // ============================================================
+    match /whatsapp_messages/{messageId} {
+      allow read: if canAdminister();
+    }
+
+    // ============================================================
+    // WHATSAPP CONVERSATIONS
+    // CRM-owned WhatsApp inbox. Clients can read only their permitted
+    // conversations/messages; all writes are server-side via Admin SDK.
+    // ============================================================
+    match /whatsapp_conversations/{conversationId} {
+      allow read: if canReadWhatsAppConversationData(resource.data);
+      allow write: if false;
+
+      match /messages/{messageId} {
+        allow read: if exists(/databases/$(database)/documents/whatsapp_conversations/$(conversationId))
+          && canReadWhatsAppConversationData(
+            get(/databases/$(database)/documents/whatsapp_conversations/$(conversationId)).data
+          );
+        allow write: if false;
+      }
+    }
+
+    // ============================================================
+    // AUDIT LOGS
+    // Server-owned critical-action log. Admins can review; clients cannot write.
+    // ============================================================
+    match /audit_logs/{logId} {
+      allow read: if canAdminister();
     }
 
     // ============================================================
     // PROJECT SCHEMAS COLLECTION
     // ============================================================
     match /project_schemas/{schemaId} {
-      allow read: if isActive();
+      allow read: if canReadProjectId(schemaId);
       allow create, update, delete: if canAdminister();
     }
 
     // ============================================================
     // CRM CONFIG COLLECTION
-    // All active users: read
-    // SuperAdmin / Admin: write
-    // property_match threshold: writable by any active user
-    // _user_count: first-user bootstrap create
+    // All active users: read safe config docs
+    // SuperAdmin / Admin: write non-server-owned config docs
+    // _user_count: server-owned bootstrap/accounting doc
     // ============================================================
     match /crm_config/{configId} {
-      allow read: if isActive();
-      allow write: if canAdminister();
-      allow write: if isActive() && configId == 'property_match';
-      allow create: if isAuth() && configId == '_user_count';
+      allow read: if canReadCrmConfig(configId);
+      allow read: if canAdminister() && configId in ['ai', 'whatsapp', 'lead_assignment'];
+      allow write: if canAdminister() && configId != '_user_count';
     }
 
     // ============================================================
     // MARKETING TEAMS COLLECTION
     // ============================================================
     match /marketing_teams/{teamId} {
-      allow read: if isActive();
+      allow read: if canAdminister();
       allow create, update, delete: if canAdminister();
     }
 

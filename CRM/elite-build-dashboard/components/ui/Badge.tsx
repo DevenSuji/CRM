@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { CSSProperties, ReactNode } from 'react';
 
 type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'golden';
 
@@ -15,11 +15,13 @@ interface BadgeProps {
   children: ReactNode;
   variant?: BadgeVariant;
   className?: string;
+  title?: string;
+  style?: CSSProperties;
 }
 
-export function Badge({ children, variant = 'default', className = '' }: BadgeProps) {
+export function Badge({ children, variant = 'default', className = '', title, style }: BadgeProps) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${VARIANT_CLASSES[variant]} ${className}`}>
+    <span title={title} style={style} className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${VARIANT_CLASSES[variant]} ${className}`}>
       {children}
     </span>
   );

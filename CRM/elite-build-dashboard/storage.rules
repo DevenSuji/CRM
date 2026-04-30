@@ -1,21 +1,38 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    function crmUser() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isActive() {
+      return request.auth != null && crmUser().active == true;
+    }
+
+    function canAdminister() {
+      return isActive() && (crmUser().role == 'superadmin' || crmUser().role == 'admin');
+    }
+
     function isValidImageUpload() {
       return request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
+    function isValidRecordingUpload() {
+      return request.resource.size < 25 * 1024 * 1024
+        && request.resource.contentType.matches('audio/.*');
+    }
+
     // Project images (hero images, gallery) — readable by all, writable by authenticated admins
     match /projects/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if canAdminister() && isValidImageUpload();
     }
 
     // Branding assets (logos, banners) — readable by all, writable by authenticated admins
     match /branding/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if canAdminister() && isValidImageUpload();
     }
 
     // Application surface themes — readable by all. The admin/superadmin gate is
@@ -23,12 +40,15 @@ service firebase.storage {
     // plus image constraints so uploads are not blocked by cross-service lookups.
     match /surface-themes/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null && isValidImageUpload();
+      allow write: if canAdminister() && isValidImageUpload();
     }
 
-    // Call recordings — only authenticated users can read/write
+    // Call recordings — locked to leadership until a lead-scoped recording
+    // workflow exists. Recordings can contain sensitive buyer conversations,
+    // so broad sales-team access should not be granted at bucket-path level.
     match /recordings/{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read: if canAdminister();
+      allow write: if canAdminister() && isValidRecordingUpload();
     }
 
     // Default: deny everything else

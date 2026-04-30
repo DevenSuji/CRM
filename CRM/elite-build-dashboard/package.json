@@ -9,8 +9,12 @@
     "lint": "eslint",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
-    "test:rules": "npx --yes firebase-tools@14 emulators:exec --only firestore,auth --project elite-build-crm-test \"npx vitest run --config vitest.rules.config.ts\"",
-    "test:all": "npm run test && npm run test:rules"
+    "test:rules": "npx --yes firebase-tools@14 emulators:exec --only firestore,auth,storage --project elite-build-crm-test \"npx vitest run --config vitest.rules.config.ts\"",
+    "test:all": "npm run test && npm run test:rules",
+    "backup:firestore": "node scripts/export-firestore.mjs",
+    "backup:verify": "node scripts/verify-firestore-backup.mjs",
+    "deploy:dev": "node scripts/deploy-cloud-run.mjs --target=dev",
+    "deploy:dev:dry-run": "node scripts/deploy-cloud-run.mjs --target=dev --dry-run"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

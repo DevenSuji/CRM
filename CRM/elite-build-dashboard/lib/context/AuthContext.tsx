@@ -1,9 +1,8 @@
 "use client";
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
-import { auth, googleProvider, db } from '@/lib/firebase';
+import { auth, googleProvider } from '@/lib/firebase';
 import { CRMUser } from '@/lib/types/user';
-import { resolveCrmUser } from '@/lib/auth/resolveCrmUser';
 
 interface AuthState {
   /** Firebase Auth user — null if not signed in */
@@ -34,14 +33,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setFirebaseUser(user);
 
       if (user) {
-        const result = await resolveCrmUser(
-          { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL },
-          db
-        );
-        if (result.kind === 'ok') {
-          setCrmUser(result.user);
-          setAccessDenied(false);
-        } else {
+        try {
+          const token = await user.getIdToken();
+          const response = await fetch('/api/auth/resolve-crm-user', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!response.ok) {
+            setCrmUser(null);
+            setAccessDenied(true);
+          } else {
+            const payload = await response.json() as { user?: CRMUser };
+            setCrmUser(payload.user || null);
+            setAccessDenied(!payload.user);
+          }
+        } catch (err) {
+          console.error('CRM user resolution failed:', err);
           setCrmUser(null);
           setAccessDenied(true);
         }

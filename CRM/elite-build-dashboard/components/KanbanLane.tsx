@@ -2,7 +2,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Lead } from '@/lib/types/lead';
-import { LaneConfig } from '@/lib/types/config';
+import { LaneConfig, SLAConfig } from '@/lib/types/config';
 import { KanbanCard } from '@/components/KanbanCard';
 
 interface KanbanLaneProps {
@@ -11,10 +11,12 @@ interface KanbanLaneProps {
   isLast?: boolean;
   onClickLead?: (lead: Lead) => void;
   availableColors?: string[];
+  slaConfig?: SLAConfig;
   fitToWindow?: boolean;
+  assigneeNameByUid?: Record<string, string>;
 }
 
-export function KanbanLane({ lane, leads, onClickLead, availableColors, fitToWindow = false }: KanbanLaneProps) {
+export function KanbanLane({ lane, leads, onClickLead, availableColors, slaConfig, fitToWindow = false, assigneeNameByUid = {} }: KanbanLaneProps) {
   const { setNodeRef, isOver } = useDroppable({ id: lane.id });
 
   const sizingClasses = fitToWindow
@@ -57,7 +59,14 @@ export function KanbanLane({ lane, leads, onClickLead, availableColors, fitToWin
       >
         <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
           {leads.map(lead => (
-            <KanbanCard key={lead.id} lead={lead} onClickLead={onClickLead} availableColors={availableColors} />
+            <KanbanCard
+              key={lead.id}
+              lead={lead}
+              onClickLead={onClickLead}
+              availableColors={availableColors}
+              slaConfig={slaConfig}
+              assigneeName={lead.assigned_to ? assigneeNameByUid[lead.assigned_to] : undefined}
+            />
           ))}
         </SortableContext>
 

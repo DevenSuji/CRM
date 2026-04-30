@@ -2,6 +2,7 @@
 import { ReactNode } from 'react';
 import { AuthProvider } from '@/lib/context/AuthContext';
 import { ThemeProvider } from '@/lib/context/ThemeContext';
+import { BrandingProvider } from '@/lib/context/BrandingContext';
 import { AuthGuard } from '@/components/AuthGuard';
 import { ToastProvider } from '@/components/ui/ToastProvider';
 import TopNav from '@/components/Sidebar';
@@ -28,7 +29,9 @@ export function ClientProviders({ children }: { children: ReactNode }) {
     <ToastProvider>
       <AuthProvider>
         <ThemeProvider>
-          <AppShell>{children}</AppShell>
+          <BrandingProvider>
+            <AppShell>{children}</AppShell>
+          </BrandingProvider>
         </ThemeProvider>
       </AuthProvider>
     </ToastProvider>

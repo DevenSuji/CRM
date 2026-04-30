@@ -5,37 +5,41 @@ import { UserRole } from '@/lib/types/user';
  *  `if (can(role, 'manage_users'))` > `if (role === 'admin' || role === 'superadmin')` */
 export type Capability =
   | 'view_dashboard'
+  | 'view_tasks'
   | 'view_all_leads'
   | 'view_own_leads_only'
   | 'create_lead'
   | 'bulk_upload_leads'
   | 'edit_lead'
   | 'delete_lead'
+  | 'view_whatsapp_inbox'
   | 'view_projects'
   | 'edit_project_core'
   | 'tag_project_campaigns'
   | 'view_admin_console'
+  | 'onboard_users'
   | 'manage_users'
   | 'promote_to_superadmin';
 
 const MATRIX: Record<UserRole, Capability[]> = {
   superadmin: [
-    'view_dashboard', 'view_all_leads', 'create_lead', 'bulk_upload_leads',
-    'edit_lead', 'delete_lead', 'view_projects', 'edit_project_core',
-    'tag_project_campaigns', 'view_admin_console', 'manage_users',
+    'view_dashboard', 'view_tasks', 'view_all_leads', 'create_lead', 'bulk_upload_leads',
+    'edit_lead', 'delete_lead', 'view_whatsapp_inbox', 'view_projects', 'edit_project_core',
+    'tag_project_campaigns', 'view_admin_console', 'onboard_users', 'manage_users',
     'promote_to_superadmin',
   ],
   admin: [
-    'view_dashboard', 'view_all_leads', 'create_lead', 'bulk_upload_leads',
-    'edit_lead', 'delete_lead', 'view_projects', 'edit_project_core',
-    'tag_project_campaigns', 'view_admin_console',
+    'view_dashboard', 'view_tasks', 'view_all_leads', 'create_lead', 'bulk_upload_leads',
+    'edit_lead', 'delete_lead', 'view_whatsapp_inbox', 'view_projects', 'edit_project_core',
+    'tag_project_campaigns', 'view_admin_console', 'onboard_users',
   ],
   sales_exec: [
-    'view_dashboard', 'view_all_leads', 'create_lead', 'edit_lead',
-    'view_projects',
+    'view_dashboard', 'view_tasks', 'view_all_leads', 'create_lead', 'edit_lead',
+    'view_whatsapp_inbox', 'view_projects',
   ],
   channel_partner: [
-    'view_dashboard', 'view_own_leads_only', 'create_lead', 'edit_lead',
+    'view_dashboard', 'view_tasks', 'view_own_leads_only', 'create_lead', 'edit_lead',
+    'view_projects',
   ],
   digital_marketing: [
     'view_projects', 'tag_project_campaigns',

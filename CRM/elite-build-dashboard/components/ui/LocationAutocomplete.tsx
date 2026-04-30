@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Loader2, Link as LinkIcon } from 'lucide-react';
+import { firebaseAuthHeaders } from '@/lib/utils/authHeaders';
 
 interface LocationAutocompleteProps {
   value: string;
@@ -107,14 +108,15 @@ export function LocationAutocomplete({
   const resolveMapUrl = useCallback(async (url: string) => {
     setResolving(true);
     try {
+      const authHeaders = await firebaseAuthHeaders();
       // Use a Next.js API route to resolve the short URL (avoids CORS issues)
       const res = await fetch('/api/resolve-map-url', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ url: url.trim() }),
       });
-      if (!res.ok) throw new Error('Failed to resolve URL');
       const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to resolve URL');
       if (data.address) {
         onChange(data.address);
       } else {

@@ -1,20 +1,27 @@
 "use client";
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { orderBy, addDoc, collection, Timestamp, doc, updateDoc, arrayUnion, arrayRemove, getDoc, deleteDoc, getDocs, query, where, writeBatch, deleteField, serverTimestamp } from 'firebase/firestore';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { orderBy, addDoc, collection, Timestamp, doc, updateDoc, arrayUnion, arrayRemove, getDoc, getDocs, onSnapshot, query, where, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import {
   LayoutDashboard, UserPlus, Phone, Mail, MapPin, Calendar, Target, Save,
   Plus, PhoneCall, MessageSquare, Clock, CalendarPlus, CheckCircle, XCircle, Send,
   Trash2, Bell, PhoneForwarded, AlarmClock, Upload, FileSpreadsheet, AlertTriangle,
   Building2, SendHorizontal, X, Megaphone, Sparkles, Home,
-  Maximize2, Minimize2,
+  Maximize2, Minimize2, GitMerge, Search, RotateCcw,
 } from 'lucide-react';
-import { useFirestoreCollection, useFirestoreCollectionKeyed } from '@/lib/hooks/useFirestoreCollection';
+import { useFirestoreCollectionKeyed } from '@/lib/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/lib/hooks/useFirestoreDoc';
 import { useToast } from '@/lib/hooks/useToast';
 import { useAuth } from '@/lib/context/AuthContext';
-import { Lead, ActivityLogEntry, SiteVisit, CallbackRequest, InterestedProperty, BookedUnit } from '@/lib/types/lead';
-import { KanbanConfig, DEFAULT_KANBAN_CONFIG, LeadCardColorsConfig, DEFAULT_LEAD_CARD_COLORS, WhatsAppConfig, PropertyMatchConfig, DEFAULT_PROPERTY_MATCH_CONFIG } from '@/lib/types/config';
+import { Lead, ActivityLogEntry, SiteVisit, CallbackRequest, InterestedProperty, BookedUnit, type LeadObjection } from '@/lib/types/lead';
+import { CRMUser } from '@/lib/types/user';
+import {
+  KanbanConfig, DEFAULT_KANBAN_CONFIG,
+  LeadCardColorsConfig, DEFAULT_LEAD_CARD_COLORS,
+  PropertyMatchConfig, DEFAULT_PROPERTY_MATCH_CONFIG,
+  SLAConfig, DEFAULT_SLA_CONFIG,
+} from '@/lib/types/config';
 import { InventoryUnit } from '@/lib/types/inventory';
 import { Project } from '@/lib/types/project';
 import { usePropertyMatching, resolveInterests, diagnoseMatches } from '@/lib/hooks/usePropertyMatching';
@@ -36,27 +43,156 @@ import { geocodeAddress } from '@/lib/utils/geocode';
 import { ProjectLocationSearch } from '@/components/ProjectLocationSearch';
 import { DateTimePicker } from '@/components/ui/DateTimePicker';
 import { parseCSV, normalizeLead, isValidRow, getLeadName, getPhone, getEmail, type CSVRow } from '@/lib/utils/csvImport';
+import { buildDuplicateKeys, describeDuplicateCandidate, findDuplicateLeads } from '@/lib/utils/leadDuplicates';
 import { injectPropertyMatchedLane, backfillLaneEmojis } from '@/lib/utils/kanbanLanes';
+import { computeLeadSLA, type LeadSLAAlert } from '@/lib/utils/leadSla';
+import { LEAD_OBJECTION_LABELS } from '@/lib/utils/leadIntelligence';
+import { buildSmartLeadSearchInsights, hasStructuredSmartSearch, matchesSmartLeadSearch, parseSmartLeadSearch } from '@/lib/utils/smartLeadSearch';
+import { buildLeadCleanupCsv, getLeadDataQualityIssues, getRequiredGovernanceNoteForStatusChange, summarizeLeadDataQuality } from '@/lib/utils/leadDataQuality';
+import { buildStageMoveLog, getStageMoveReasonOptions, type StageMoveReasonCategory } from '@/lib/utils/kanbanStageMoves';
+import { getLeadSourceNormalizationPatch, leadSourceLabel, normalizeLeadSource } from '@/lib/utils/leadSourceHygiene';
+import { filterLeadPageLeads, isChannelPartnerLead } from '@/lib/utils/leadVisibility';
+
+function useProjectScopedAvailableInventory(enabled: boolean, projects: Project[]) {
+  const [snapshotState, setSnapshotState] = useState<{
+    key: string;
+    data: InventoryUnit[];
+    loading: boolean;
+  }>({ key: '', data: [], loading: false });
+  const projectIds = useMemo(
+    () => projects.map(project => project.id).filter(Boolean).sort(),
+    [projects],
+  );
+  const projectKey = projectIds.join('|');
+  const shouldSubscribe = enabled && projectIds.length > 0;
+
+  useEffect(() => {
+    if (!shouldSubscribe) {
+      return;
+    }
+
+    const byProject = new Map<string, InventoryUnit[]>();
+    const loaded = new Set<string>();
+    const flatten = () => projectIds.flatMap(projectId => byProject.get(projectId) || []);
+
+    const unsubs = projectIds.map(projectId => {
+      const inventoryQuery = query(
+        collection(db, 'inventory'),
+        where('projectId', '==', projectId),
+        where('status', '==', 'Available'),
+      );
+
+      return onSnapshot(
+        inventoryQuery,
+        { includeMetadataChanges: true },
+        snapshot => {
+          byProject.set(projectId, snapshot.docs.map(d => ({ id: d.id, ...d.data() } as InventoryUnit)));
+          loaded.add(projectId);
+          setSnapshotState({ key: projectKey, data: flatten(), loading: loaded.size < projectIds.length });
+        },
+        err => {
+          console.error(`Firestore error [inventory:${projectId}]:`, err);
+          byProject.set(projectId, []);
+          loaded.add(projectId);
+          setSnapshotState({ key: projectKey, data: flatten(), loading: loaded.size < projectIds.length });
+        },
+      );
+    });
+
+    return () => unsubs.forEach(unsub => unsub());
+  }, [projectIds, projectKey, shouldSubscribe]);
+
+  if (!shouldSubscribe) {
+    return { data: [], loading: false };
+  }
+  if (snapshotState.key !== projectKey) {
+    return { data: [], loading: true };
+  }
+  return { data: snapshotState.data, loading: snapshotState.loading };
+}
+
+function leadCreatedAtMs(lead: Lead): number {
+  const value = lead.created_at as unknown;
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'string') return Date.parse(value) || 0;
+  if (typeof value === 'object') {
+    const timestamp = value as { toMillis?: () => number; seconds?: number };
+    if (typeof timestamp.toMillis === 'function') return timestamp.toMillis();
+    if (typeof timestamp.seconds === 'number') return timestamp.seconds * 1000;
+  }
+  return 0;
+}
+
+function mergeAndSortLeads(...groups: Lead[][]): Lead[] {
+  const byId = new Map<string, Lead>();
+  for (const group of groups) {
+    for (const lead of group) {
+      byId.set(lead.id, lead);
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) => leadCreatedAtMs(b) - leadCreatedAtMs(a));
+}
 
 export default function LeadsPage() {
-  const { crmUser } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { showToast } = useToast();
+  const { crmUser, firebaseUser } = useAuth();
   const isAdmin = crmUser?.role === 'admin' || crmUser?.role === 'superadmin';
+  const isSalesExec = crmUser?.role === 'sales_exec';
+  const canDeleteLead = can(crmUser?.role, 'delete_lead');
   const ownLeadsOnly = can(crmUser?.role, 'view_own_leads_only') && !can(crmUser?.role, 'view_all_leads');
+  const isChannelPartner = crmUser?.role === 'channel_partner';
 
-  // Build the leads subscription deliberately: CPs must filter by owner_uid
-  // at query-level (rules deny a full-collection listener for them). We wait
-  // until crmUser resolves before subscribing — pass `null` as the key to skip.
-  const leadsKey = !crmUser ? null : (ownLeadsOnly ? `own:${crmUser.uid}` : 'all');
+  // Build lead subscriptions deliberately: scoped roles must filter at
+  // query-level because Firestore rules deny broad collection listeners.
+  const leadsKey = !crmUser || isSalesExec ? null : (ownLeadsOnly ? `own:${crmUser.uid}` : 'all');
   const leadsConstraints = useMemo(() => {
     if (ownLeadsOnly && crmUser?.uid) {
       return [where('owner_uid', '==', crmUser.uid), orderBy('created_at', 'desc')];
     }
     return [orderBy('created_at', 'desc')];
   }, [ownLeadsOnly, crmUser]);
-  const { data: leads, loading: leadsLoading } = useFirestoreCollectionKeyed<Lead>(
+  const { data: baseLeads, loading: baseLeadsLoading } = useFirestoreCollectionKeyed<Lead>(
     'leads',
     leadsKey,
     leadsConstraints,
+  );
+  const salesAssignedLeadsKey = isSalesExec && crmUser?.uid ? `sales-assigned:${crmUser.uid}` : null;
+  const salesAssignedLeadsConstraints = useMemo(() => (
+    isSalesExec && crmUser?.uid ? [where('assigned_to', '==', crmUser.uid)] : []
+  ), [crmUser?.uid, isSalesExec]);
+  const { data: salesAssignedLeads, loading: salesAssignedLeadsLoading } = useFirestoreCollectionKeyed<Lead>(
+    'leads',
+    salesAssignedLeadsKey,
+    salesAssignedLeadsConstraints,
+  );
+  const salesUnassignedLeadsKey = isSalesExec && crmUser?.uid ? `sales-unassigned:${crmUser.uid}` : null;
+  const salesUnassignedLeadsConstraints = useMemo(() => (
+    isSalesExec
+      ? [where('assigned_to', '==', null), where('source_normalized', '!=', 'Channel Partner')]
+      : []
+  ), [isSalesExec]);
+  const { data: salesUnassignedLeads, loading: salesUnassignedLeadsLoading } = useFirestoreCollectionKeyed<Lead>(
+    'leads',
+    salesUnassignedLeadsKey,
+    salesUnassignedLeadsConstraints,
+  );
+  const leads = useMemo(
+    () => isSalesExec ? mergeAndSortLeads(salesAssignedLeads, salesUnassignedLeads) : baseLeads,
+    [baseLeads, isSalesExec, salesAssignedLeads, salesUnassignedLeads],
+  );
+  const leadsLoading = isSalesExec
+    ? salesAssignedLeadsLoading || salesUnassignedLeadsLoading
+    : baseLeadsLoading;
+  const activeLeads = useMemo(
+    () => leads.filter(lead => !lead.archived_at && !lead.archived_at_iso),
+    [leads],
+  );
+  const visibleLeads = useMemo(
+    () => filterLeadPageLeads(activeLeads, crmUser),
+    [activeLeads, crmUser],
   );
 
   const { data: kanbanConfig } = useFirestoreDoc<KanbanConfig & { id: string }>(
@@ -74,25 +210,56 @@ export default function LeadsPage() {
     'property_match',
   );
 
-  const { data: inventoryUnits } = useFirestoreCollection<InventoryUnit>(
-    'inventory',
-    where('status', '==', 'Available'),
+  const { data: slaConfigDoc } = useFirestoreDoc<SLAConfig & { id: string }>(
+    'crm_config',
+    'sla',
   );
 
-  const { data: allProjects } = useFirestoreCollection<Project>(
+  const inventoryKey = !crmUser ? null : isChannelPartner ? null : 'available-inventory';
+  const { data: internalInventoryUnits, loading: internalInventoryLoading } = useFirestoreCollectionKeyed<InventoryUnit>(
+    'inventory',
+    inventoryKey,
+    [where('status', '==', 'Available')],
+  );
+
+  const projectKey = !crmUser
+    ? null
+    : isChannelPartner
+      ? `assigned-projects:${crmUser.uid}`
+      : 'all-projects';
+  const projectConstraints = useMemo(() => {
+    if (isChannelPartner && crmUser?.uid) {
+      return [where('channel_partner_uids', 'array-contains', crmUser.uid)];
+    }
+    return [orderBy('created_at', 'desc')];
+  }, [isChannelPartner, crmUser?.uid]);
+  const { data: allProjects } = useFirestoreCollectionKeyed<Project>(
     'projects',
-    orderBy('created_at', 'desc'),
+    projectKey,
+    projectConstraints,
+  );
+  const { data: channelPartnerInventoryUnits, loading: channelPartnerInventoryLoading } = useProjectScopedAvailableInventory(
+    Boolean(crmUser && isChannelPartner),
+    allProjects,
+  );
+  const inventoryUnits = isChannelPartner ? channelPartnerInventoryUnits : internalInventoryUnits;
+  const inventoryLoading = isChannelPartner ? channelPartnerInventoryLoading : internalInventoryLoading;
+
+  const { data: teamUsers } = useFirestoreCollectionKeyed<CRMUser & { id: string }>(
+    'users',
+    isAdmin ? 'users:lead-assignment' : null,
+    [],
   );
 
   const thresholdPercent = matchConfig?.threshold_percent ?? DEFAULT_PROPERTY_MATCH_CONFIG.threshold_percent;
 
   // Property matching hook — auto-matches leads against available inventory
   usePropertyMatching({
-    leads,
+    leads: visibleLeads,
     inventory: inventoryUnits,
     projects: allProjects,
     thresholdPercent,
-    enabled: !leadsLoading,
+    enabled: !leadsLoading && !inventoryLoading && can(crmUser?.role, 'edit_lead'),
   });
 
   const lanes = useMemo(() => {
@@ -105,17 +272,167 @@ export default function LeadsPage() {
     [cardColorsConfig],
   );
 
+  const slaConfig = useMemo(
+    () => ({ ...DEFAULT_SLA_CONFIG, ...(slaConfigDoc || {}) }),
+    [slaConfigDoc],
+  );
+
+  const [leadSearch, setLeadSearch] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [urgencyFilter, setUrgencyFilter] = useState('');
+  const [matchFilter, setMatchFilter] = useState('');
+  const [attentionFilter, setAttentionFilter] = useState('');
+  const [dataQualityFilter, setDataQualityFilter] = useState('');
+  const assignableUsers = useMemo(() => {
+    const self = crmUser ? [{ ...crmUser, id: crmUser.uid }] : [];
+    const known = new Map<string, CRMUser & { id?: string }>();
+    for (const user of [...teamUsers, ...self]) {
+      known.set(user.uid, user);
+    }
+    return Array.from(known.values())
+      .filter(user => user.active)
+      .filter(user => ['superadmin', 'admin', 'sales_exec', 'channel_partner'].includes(user.role))
+      .sort((a, b) => (a.name || a.email || a.uid).localeCompare(b.name || b.email || b.uid));
+  }, [crmUser, teamUsers]);
+  const assigneeNameByUid = useMemo(() => Object.fromEntries(
+    assignableUsers.map(user => [user.uid, user.name || user.email || user.uid]),
+  ), [assignableUsers]);
+  const assigneeOptions = useMemo(() => [
+    { value: 'mine', label: 'My leads' },
+    { value: 'unassigned', label: 'Unassigned' },
+    ...assignableUsers.map(user => ({ value: `uid:${user.uid}`, label: user.name || user.email || user.uid })),
+  ], [assignableUsers]);
+  const sourceOptions = useMemo(() => {
+    const sources = [...new Set(visibleLeads.map(lead => leadSourceLabel(lead)).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    return sources.map(source => ({ value: source, label: source }));
+  }, [visibleLeads]);
+  const smartLeadSearch = useMemo(() => parseSmartLeadSearch(leadSearch), [leadSearch]);
+  const smartSearchActive = hasStructuredSmartSearch(smartLeadSearch);
+
+  const filteredLeads = useMemo(() => {
+    return visibleLeads.filter(lead => {
+      const sla = computeLeadSLA(lead, slaConfig);
+      if (sourceFilter && leadSourceLabel(lead) !== sourceFilter) return false;
+      if (urgencyFilter && lead.ai_audit?.urgency !== urgencyFilter) return false;
+      if (matchFilter === 'matched' && !lead.suggested_plot && !(lead.interested_properties?.length)) return false;
+      if (matchFilter === 'unmatched' && (lead.suggested_plot || lead.interested_properties?.length)) return false;
+      if (dataQualityFilter) {
+        const quality = summarizeLeadDataQuality(lead);
+        if (dataQualityFilter === 'any' && quality.totalIssues === 0) return false;
+        if (dataQualityFilter === 'blocking' && quality.blockingIssues === 0) return false;
+        if (dataQualityFilter === 'warnings' && quality.warningIssues === 0) return false;
+        if (!['any', 'blocking', 'warnings'].includes(dataQualityFilter) && !quality.issueIds.includes(dataQualityFilter)) return false;
+      }
+      if (attentionFilter === 'needs_attention' && sla.alerts.length === 0) return false;
+      if (attentionFilter && attentionFilter !== 'needs_attention' && !sla.alerts.some(alert => alert.id === attentionFilter)) return false;
+      if (assigneeFilter === 'mine' && lead.assigned_to !== crmUser?.uid) return false;
+      if (assigneeFilter === 'unassigned' && lead.assigned_to) return false;
+      if (assigneeFilter.startsWith('uid:') && lead.assigned_to !== assigneeFilter.slice(4)) return false;
+      return matchesSmartLeadSearch(lead, smartLeadSearch, { currentUserUid: crmUser?.uid });
+    });
+  }, [visibleLeads, assigneeFilter, attentionFilter, crmUser?.uid, dataQualityFilter, matchFilter, slaConfig, smartLeadSearch, sourceFilter, urgencyFilter]);
+  const smartSearchInsights = useMemo(
+    () => buildSmartLeadSearchInsights(filteredLeads, smartLeadSearch),
+    [filteredLeads, smartLeadSearch],
+  );
+
+  const attentionCounts = useMemo(() => {
+    const counts: Record<LeadSLAAlert['id'] | 'needs_attention', number> = {
+      needs_attention: 0,
+      missed_callback: 0,
+      first_call: 0,
+      no_follow_up: 0,
+      stale: 0,
+    };
+    for (const lead of visibleLeads) {
+      const alerts = computeLeadSLA(lead, slaConfig).alerts;
+      if (alerts.length > 0) counts.needs_attention += 1;
+      for (const alert of alerts) {
+        counts[alert.id] += 1;
+      }
+    }
+    return counts;
+  }, [visibleLeads, slaConfig]);
+
+  const dataQualityCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      any: 0,
+      blocking: 0,
+      warnings: 0,
+      missing_phone: 0,
+      missing_budget: 0,
+      missing_location: 0,
+      missing_assignee: 0,
+      missing_source: 0,
+      source_needs_normalization: 0,
+      booked_without_unit: 0,
+      site_visit_without_visit: 0,
+      rejected_without_reason: 0,
+      closed_without_details: 0,
+    };
+
+    for (const lead of visibleLeads) {
+      const quality = summarizeLeadDataQuality(lead);
+      if (quality.totalIssues > 0) counts.any += 1;
+      if (quality.blockingIssues > 0) counts.blocking += 1;
+      if (quality.warningIssues > 0) counts.warnings += 1;
+      for (const issueId of quality.issueIds) {
+        counts[issueId] = (counts[issueId] || 0) + 1;
+      }
+    }
+
+    return counts;
+  }, [visibleLeads]);
+
+  const filtersActive = Boolean(leadSearch || sourceFilter || assigneeFilter || urgencyFilter || matchFilter || attentionFilter || dataQualityFilter);
+  const clearLeadFilters = () => {
+    setLeadSearch('');
+    setSourceFilter('');
+    setAssigneeFilter('');
+    setUrgencyFilter('');
+    setMatchFilter('');
+    setAttentionFilter('');
+    setDataQualityFilter('');
+  };
+
   const stats = useMemo(() => {
-    const total = leads.length;
-    const highUrgency = leads.filter(l => l.ai_audit?.urgency === 'High').length;
-    const matched = leads.filter(l => l.suggested_plot).length;
+    const total = filteredLeads.length;
+    const highUrgency = filteredLeads.filter(l => l.ai_audit?.urgency === 'High').length;
+    const matched = filteredLeads.filter(l => l.suggested_plot || l.interested_properties?.length).length;
     return { total, highUrgency, matched };
-  }, [leads]);
+  }, [filteredLeads]);
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [normalizingSources, setNormalizingSources] = useState(false);
+  const [assigningUnassigned, setAssigningUnassigned] = useState(false);
+
+  const sourceNormalizationLeads = useMemo(
+    () => visibleLeads.filter(lead => getLeadSourceNormalizationPatch(lead)),
+    [visibleLeads],
+  );
+  const cleanupExportLeads = useMemo(
+    () => filteredLeads.filter(lead => summarizeLeadDataQuality(lead).totalIssues > 0),
+    [filteredLeads],
+  );
+  const unassignedCleanupLeads = useMemo(
+    () => filteredLeads.filter(lead => summarizeLeadDataQuality(lead).issueIds.includes('missing_assignee')),
+    [filteredLeads],
+  );
+
+  const leadIdFromUrl = searchParams.get('leadId');
+  const leadFromUrl = useMemo(
+    () => leadIdFromUrl ? visibleLeads.find(item => item.id === leadIdFromUrl) || null : null,
+    [visibleLeads, leadIdFromUrl],
+  );
+  const selectedVisibleLead = useMemo(
+    () => selectedLead ? visibleLeads.find(item => item.id === selectedLead.id) || null : null,
+    [selectedLead, visibleLeads],
+  );
+  const activeLead = selectedVisibleLead || leadFromUrl;
 
   const [fitToWindow, setFitToWindow] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
@@ -130,6 +447,132 @@ export default function LeadsPage() {
     setSelectedLead(lead);
   }, []);
 
+  const handleCloseLead = useCallback(() => {
+    setSelectedLead(null);
+    if (searchParams.has('leadId')) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('leadId');
+      const queryString = params.toString();
+      router.replace(queryString ? `/?${queryString}` : '/');
+    }
+  }, [router, searchParams]);
+
+  const handleNormalizeSources = useCallback(async () => {
+    if (!isAdmin || sourceNormalizationLeads.length === 0 || normalizingSources) return;
+    setNormalizingSources(true);
+    try {
+      const chunks: Lead[][] = [];
+      for (let index = 0; index < sourceNormalizationLeads.length; index += 400) {
+        chunks.push(sourceNormalizationLeads.slice(index, index + 400));
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        for (const lead of chunk) {
+          const patch = getLeadSourceNormalizationPatch(lead);
+          if (!patch) continue;
+          const logEntry: ActivityLogEntry = {
+            id: `source_norm_${Date.now()}_${lead.id}`,
+            type: 'note',
+            text: `Source normalized from "${patch.source}" to "${patch.source_normalized}" for reporting hygiene.`,
+            author: crmUser?.name || crmUser?.email || 'Admin',
+            created_at: new Date().toISOString(),
+          };
+          batch.update(doc(db, 'leads', lead.id), {
+            source_normalized: patch.source_normalized,
+            activity_log: arrayUnion(logEntry),
+          });
+        }
+        await batch.commit();
+      }
+
+      showToast('success', `Normalized source labels for ${sourceNormalizationLeads.length} lead${sourceNormalizationLeads.length === 1 ? '' : 's'}.`);
+    } catch (err) {
+      console.error('Failed to normalize sources:', err);
+      showToast('error', 'Failed to normalize lead sources.');
+    } finally {
+      setNormalizingSources(false);
+    }
+  }, [crmUser?.email, crmUser?.name, isAdmin, normalizingSources, showToast, sourceNormalizationLeads]);
+
+  const handleExportCleanupQueue = useCallback(() => {
+    if (cleanupExportLeads.length === 0) {
+      showToast('error', 'No cleanup leads to export.');
+      return;
+    }
+    const csv = buildLeadCleanupCsv(cleanupExportLeads, assigneeNameByUid);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const stamp = new Date().toISOString().slice(0, 10);
+    link.download = `lead-cleanup-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast('success', `Exported ${cleanupExportLeads.length} cleanup lead${cleanupExportLeads.length === 1 ? '' : 's'}.`);
+  }, [assigneeNameByUid, cleanupExportLeads, showToast]);
+
+  const handleAssignUnassigned = useCallback(async () => {
+    if (!isAdmin || assigningUnassigned || unassignedCleanupLeads.length === 0) return;
+    if (!firebaseUser) {
+      showToast('error', 'Sign in again before assigning leads.');
+      return;
+    }
+
+    setAssigningUnassigned(true);
+    let assigned = 0;
+    let skipped = 0;
+    try {
+      for (const lead of unassignedCleanupLeads) {
+        const assignment = await resolveLeadAssignment(
+          () => firebaseUser.getIdToken(),
+          lead.source,
+          lead.raw_data,
+          true,
+        );
+
+        if (!assignment?.assigneeUid) {
+          skipped++;
+          continue;
+        }
+
+        await updateDoc(doc(db, 'leads', lead.id), {
+          assigned_to: assignment.assigneeUid,
+          activity_log: arrayUnion(buildAssignmentEntry(
+            assignment.assigneeUid,
+            assignment.assigneeName,
+            `Bulk cleanup: ${assignment.reason}`,
+            crmUser?.name || crmUser?.email || 'Admin',
+          )),
+        });
+        await fetch('/api/whatsapp/sync-lead', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${await firebaseUser.getIdToken()}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ leadId: lead.id }),
+        }).catch(syncErr => {
+          console.warn('Failed to sync WhatsApp conversation access:', syncErr);
+        });
+        assigned++;
+      }
+
+      if (assigned > 0) {
+        showToast('success', `Assigned ${assigned} lead${assigned === 1 ? '' : 's'}${skipped > 0 ? `, skipped ${skipped}` : ''}.`);
+      } else {
+        showToast('error', 'No eligible assignee was available for these leads.');
+      }
+    } catch (err) {
+      console.error('Failed to bulk assign leads:', err);
+      showToast('error', `Assigned ${assigned}, then failed while assigning remaining leads.`);
+    } finally {
+      setAssigningUnassigned(false);
+    }
+  }, [assigningUnassigned, crmUser?.email, crmUser?.name, firebaseUser, isAdmin, showToast, unassignedCleanupLeads]);
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <PageHeader
@@ -137,8 +580,12 @@ export default function LeadsPage() {
         subtitle=""
         actions={
           <div className="mn-segmented flex flex-wrap items-center gap-2 rounded-[1.4rem] p-2">
-            <MatchThresholdSlider value={thresholdPercent} />
-            <div className="hidden h-6 w-px bg-mn-border/30 sm:block" />
+            {isAdmin && (
+              <>
+                <MatchThresholdSlider value={thresholdPercent} />
+                <div className="hidden h-6 w-px bg-mn-border/30 sm:block" />
+              </>
+            )}
             <button
               type="button"
               onClick={() => setFitToWindow(v => !v)}
@@ -154,6 +601,12 @@ export default function LeadsPage() {
               {fitToWindow ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
             <Badge variant="default">{stats.total} total</Badge>
+            {filtersActive && (
+              <Badge variant="info">{filteredLeads.length} of {visibleLeads.length}</Badge>
+            )}
+            {dataQualityCounts.any > 0 && (
+              <Badge variant={dataQualityCounts.blocking > 0 ? 'danger' : 'warning'}>{dataQualityCounts.any} cleanup</Badge>
+            )}
             {stats.highUrgency > 0 && (
               <Badge variant="danger">{stats.highUrgency} high urgency</Badge>
             )}
@@ -165,12 +618,165 @@ export default function LeadsPage() {
                 Import CSV
               </Button>
             )}
+            {isAdmin && cleanupExportLeads.length > 0 && (
+              <Button
+                variant="secondary"
+                icon={<FileSpreadsheet className="w-4 h-4" />}
+                onClick={handleExportCleanupQueue}
+              >
+                Export Cleanup ({cleanupExportLeads.length})
+              </Button>
+            )}
+            {isAdmin && unassignedCleanupLeads.length > 0 && (
+              <Button
+                variant="secondary"
+                icon={<UserPlus className="w-4 h-4" />}
+                onClick={handleAssignUnassigned}
+                disabled={assigningUnassigned}
+              >
+                {assigningUnassigned ? 'Assigning...' : `Assign Unassigned (${unassignedCleanupLeads.length})`}
+              </Button>
+            )}
+            {isAdmin && sourceNormalizationLeads.length > 0 && (
+              <Button
+                variant="secondary"
+                icon={<CheckCircle className="w-4 h-4" />}
+                onClick={handleNormalizeSources}
+                disabled={normalizingSources}
+              >
+                {normalizingSources ? 'Normalizing...' : `Normalize Sources (${sourceNormalizationLeads.length})`}
+              </Button>
+            )}
             <Button icon={<UserPlus className="w-4 h-4" />} onClick={() => setShowAddModal(true)}>
               Create Lead
             </Button>
           </div>
         }
       />
+
+      <div className="px-4 pt-4 sm:px-6 lg:px-8">
+        <div className="app-shell-panel rounded-[1.5rem] p-3">
+          <div className="grid gap-3 lg:grid-cols-[minmax(260px,1.3fr)_repeat(6,minmax(130px,0.8fr))_auto] lg:items-end">
+            <div className="relative">
+              <Input
+                label="Search Leads"
+                value={leadSearch}
+                onChange={event => setLeadSearch(event.target.value)}
+                placeholder="Try: hot villa leads above 80L..."
+                className="pl-10"
+              />
+              <Search className="pointer-events-none absolute bottom-[13px] left-3.5 h-4 w-4 text-mn-text-muted" />
+            </div>
+            <Select
+              label="Source"
+              value={sourceFilter}
+              onChange={event => setSourceFilter(event.target.value)}
+              placeholder="All sources"
+              options={sourceOptions}
+            />
+            <Select
+              label="Assignee"
+              value={assigneeFilter}
+              onChange={event => setAssigneeFilter(event.target.value)}
+              placeholder="All leads"
+              options={assigneeOptions}
+            />
+            <Select
+              label="Urgency"
+              value={urgencyFilter}
+              onChange={event => setUrgencyFilter(event.target.value)}
+              placeholder="Any urgency"
+              options={[
+                { value: 'High', label: 'High' },
+                { value: 'Medium', label: 'Medium' },
+                { value: 'Low', label: 'Low' },
+              ]}
+            />
+            <Select
+              label="Match"
+              value={matchFilter}
+              onChange={event => setMatchFilter(event.target.value)}
+              placeholder="Any match"
+              options={[
+                { value: 'matched', label: 'Matched' },
+                { value: 'unmatched', label: 'Unmatched' },
+              ]}
+            />
+            <Select
+              label="Attention"
+              value={attentionFilter}
+              onChange={event => setAttentionFilter(event.target.value)}
+              placeholder="Any SLA"
+              options={[
+                { value: 'needs_attention', label: `Needs attention (${attentionCounts.needs_attention})` },
+                { value: 'first_call', label: `First call overdue (${attentionCounts.first_call})` },
+                { value: 'missed_callback', label: `Callback overdue (${attentionCounts.missed_callback})` },
+                { value: 'no_follow_up', label: `No follow-up (${attentionCounts.no_follow_up})` },
+                { value: 'stale', label: `Stale lead (${attentionCounts.stale})` },
+              ]}
+            />
+            <Select
+              label="Data Quality"
+              value={dataQualityFilter}
+              onChange={event => setDataQualityFilter(event.target.value)}
+              placeholder="Any quality"
+              options={[
+                { value: 'any', label: `Needs cleanup (${dataQualityCounts.any})` },
+                { value: 'blocking', label: `Blocking (${dataQualityCounts.blocking})` },
+                { value: 'warnings', label: `Warnings (${dataQualityCounts.warnings})` },
+                { value: 'missing_phone', label: `Missing phone (${dataQualityCounts.missing_phone})` },
+                { value: 'missing_budget', label: `Missing budget (${dataQualityCounts.missing_budget})` },
+                { value: 'missing_location', label: `Missing location (${dataQualityCounts.missing_location})` },
+                { value: 'missing_assignee', label: `Missing assignee (${dataQualityCounts.missing_assignee})` },
+                { value: 'source_needs_normalization', label: `Source cleanup (${dataQualityCounts.source_needs_normalization})` },
+                { value: 'site_visit_without_visit', label: `Visit details (${dataQualityCounts.site_visit_without_visit})` },
+                { value: 'booked_without_unit', label: `Booked unit (${dataQualityCounts.booked_without_unit})` },
+                { value: 'rejected_without_reason', label: `Reject reason (${dataQualityCounts.rejected_without_reason})` },
+                { value: 'closed_without_details', label: `Closure details (${dataQualityCounts.closed_without_details})` },
+              ]}
+            />
+            <button
+              type="button"
+              onClick={clearLeadFilters}
+              disabled={!filtersActive}
+              title="Clear filters"
+              aria-label="Clear lead filters"
+              className="flex h-11 w-11 items-center justify-center rounded-2xl border border-mn-border/60 bg-mn-card/70 text-mn-text-muted transition-colors hover:bg-mn-card-hover hover:text-mn-text disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+          </div>
+          {smartSearchActive && smartLeadSearch.labels.length > 0 && (
+            <div className="mt-3 space-y-3 border-t border-mn-border/35 pt-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-mn-text-muted">Smart Search</span>
+                {smartLeadSearch.labels.slice(0, 8).map(label => (
+                  <Badge key={label} variant="info">{label}</Badge>
+                ))}
+              </div>
+              <div className="rounded-2xl border border-mn-h2/15 bg-mn-h2/5 p-3">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {smartSearchInsights.stats.slice(0, 7).map(stat => (
+                      <div key={stat.label} className="rounded-xl border border-mn-border/45 bg-mn-card/75 px-3 py-2">
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-mn-text-muted">{stat.label}</p>
+                        <p className="text-sm font-black text-mn-text">{stat.value}</p>
+                      </div>
+                    ))}
+                    {smartSearchInsights.topProjects.length > 0 && (
+                      <div className="rounded-xl border border-mn-border/45 bg-mn-card/75 px-3 py-2">
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-mn-text-muted">Top Projects</p>
+                        <p className="text-sm font-black text-mn-text">{smartSearchInsights.topProjects.join(', ')}</p>
+                      </div>
+                    )}
+                  </div>
+                  <p className="max-w-xl text-sm font-bold leading-relaxed text-mn-text">{smartSearchInsights.suggestedAction}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="flex-1 overflow-hidden pt-4">
         {leadsLoading ? (
@@ -181,33 +787,93 @@ export default function LeadsPage() {
             </div>
           </div>
         ) : (
-          <KanbanBoard leads={leads} lanes={lanes} onClickLead={handleClickLead} availableColors={availableColors} fitToWindow={fitToWindow} />
+          <KanbanBoard
+            leads={filteredLeads}
+            lanes={lanes}
+            onClickLead={handleClickLead}
+            availableColors={availableColors}
+            slaConfig={slaConfig}
+            fitToWindow={fitToWindow}
+            assigneeNameByUid={assigneeNameByUid}
+            actorName={crmUser?.name || crmUser?.email || firebaseUser?.email || 'Admin'}
+            canManageBookings={isAdmin}
+            getAuthToken={() => firebaseUser?.getIdToken() ?? Promise.resolve(null)}
+          />
         )}
       </div>
 
-      <AddLeadModal open={showAddModal} onClose={() => setShowAddModal(false)} />
-      <ImportCSVModal open={showImportModal} onClose={() => setShowImportModal(false)} userName={crmUser?.name || 'Unknown'} />
-      {selectedLead && (
+      <AddLeadModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        existingLeads={visibleLeads}
+        onOpenLead={handleClickLead}
+        getAuthToken={() => firebaseUser?.getIdToken() ?? Promise.resolve(null)}
+      />
+      <ImportCSVModal
+        open={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        userName={crmUser?.name || 'Unknown'}
+        existingLeads={visibleLeads}
+        getAuthToken={() => firebaseUser?.getIdToken() ?? Promise.resolve(null)}
+      />
+      {activeLead && (
         <LeadDetailModal
-          lead={selectedLead}
-          onClose={() => setSelectedLead(null)}
+          lead={activeLead}
+          onClose={handleCloseLead}
           isAdmin={isAdmin}
+          canDeleteLead={canDeleteLead}
           userName={crmUser?.name || 'Unknown'}
           userUid={crmUser?.uid || ''}
           inventory={inventoryUnits}
           projects={allProjects}
           globalThresholdPercent={thresholdPercent}
+          existingLeads={visibleLeads}
+          assignableUsers={assignableUsers}
+          assigneeNameByUid={assigneeNameByUid}
+          getAuthToken={() => firebaseUser?.getIdToken() ?? Promise.resolve(null)}
         />
       )}
 
       {/* Callback alarm overlay — checks all leads for due callbacks */}
-      <CallbackAlarmOverlay leads={leads} onOpenLead={handleClickLead} currentUserUid={crmUser?.uid || ''} />
+      <CallbackAlarmOverlay leads={visibleLeads} onOpenLead={handleClickLead} currentUserUid={crmUser?.uid || ''} />
     </div>
   );
 }
 
 /* ==================== ADD LEAD MODAL ==================== */
-function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+async function resolveLeadAssignment(
+  getAuthToken: (() => Promise<string | null>) | undefined,
+  source: string,
+  rawData: Lead['raw_data'],
+  commit = false,
+): Promise<{ assigneeUid: string | null; assigneeName: string | null; reason: string } | null> {
+  const token = await getAuthToken?.();
+  if (!token) return null;
+
+  const res = await fetch('/api/lead-assignment/next', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ source, raw_data: rawData, commit }),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+function buildAssignmentEntry(assigneeUid: string, assigneeName: string | null, reason: string, author: string): ActivityLogEntry {
+  return {
+    id: `assign_${Date.now()}_${assigneeUid}`,
+    type: 'lead_assigned',
+    text: `Lead assigned to ${assigneeName || assigneeUid}. ${reason}`,
+    author,
+    created_at: new Date().toISOString(),
+    assigned_to: assigneeUid,
+  };
+}
+
+function AddLeadModal({ open, onClose, existingLeads, onOpenLead, getAuthToken }: { open: boolean; onClose: () => void; existingLeads: Lead[]; onOpenLead: (lead: Lead) => void; getAuthToken?: () => Promise<string | null> }) {
   const { showToast } = useToast();
   const { crmUser } = useAuth();
 
@@ -222,18 +888,66 @@ function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [interests, setInterests] = useState<string[]>(['Plotted Land']);
   const [bhk, setBhk] = useState<number>(0);
   const [houseVariant, setHouseVariant] = useState('');
+  const [assignmentPreview, setAssignmentPreview] = useState<{ assigneeUid: string | null; assigneeName: string | null; reason: string } | null>(null);
+  const [assignmentPrepared, setAssignmentPrepared] = useState(false);
+  const [savingLead, setSavingLead] = useState(false);
 
   const toggleInterest = (opt: string) => {
     setInterests(prev => prev.includes(opt) ? prev.filter(i => i !== opt) : [...prev, opt]);
+    setAssignmentPrepared(false);
+    setAssignmentPreview(null);
   };
 
   const showBhkField = interests.some(i => BHK_PROPERTY_TYPES.includes(i));
   const showVariantField = interests.includes('Individual House');
+  const duplicateCandidates = useMemo(() => findDuplicateLeads({
+    lead_name: name,
+    phone,
+    email,
+  }, existingLeads).slice(0, 3), [email, existingLeads, name, phone]);
 
   const resetForm = () => {
     setName(''); setPhone(''); setEmail(''); setBudget('');
     setPlanToBuy(''); setProfession(''); setLocation('');
     setNote(''); setInterests(['Plotted Land']); setBhk(0); setHouseVariant('');
+    setAssignmentPreview(null); setAssignmentPrepared(false); setSavingLead(false);
+  };
+
+  const markAssignmentDirty = () => {
+    if (assignmentPrepared) {
+      setAssignmentPrepared(false);
+      setAssignmentPreview(null);
+    }
+  };
+
+  const buildDraftLead = () => {
+    const leadName = name.trim();
+    const source = crmUser?.role === 'channel_partner' ? 'Channel Partner' : 'Walk-in';
+    const rawData: Lead['raw_data'] = {
+      lead_name: leadName,
+      phone: phone.trim(),
+      email: email.trim() || 'N/A',
+      budget: Number(budget) || 0,
+      plan_to_buy: planToBuy || 'Not Specified',
+      profession: profession || 'Not Specified',
+      location: location || 'Unknown',
+      note: note || 'Walk-in customer',
+      pref_facings: [],
+      interest: interests[0] || 'General Query',
+      interests: interests,
+      ...(bhk > 0 ? { bhk } : {}),
+      ...(houseVariant ? { house_variant: houseVariant } : {}),
+    };
+    const leadData = {
+      status: 'New',
+      created_at: Timestamp.now(),
+      source,
+      source_normalized: normalizeLeadSource(source),
+      owner_uid: crmUser?.uid || null,
+      duplicate_keys: buildDuplicateKeys(rawData),
+      raw_data: rawData,
+    };
+    return { leadName, source, rawData, leadData };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -242,37 +956,61 @@ function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void })
       showToast('error', 'Name and phone number are required.');
       return;
     }
-    const leadName = name.trim();
-    const leadData = {
-      status: 'New',
-      created_at: Timestamp.now(),
-      source: crmUser?.role === 'channel_partner' ? 'Channel Partner' : 'Walk-in',
-      owner_uid: crmUser?.uid || null,
-      raw_data: {
-        lead_name: leadName,
-        phone: phone.trim(),
-        email: email.trim() || 'N/A',
-        budget: Number(budget) || 0,
-        plan_to_buy: planToBuy || 'Not Specified',
-        profession: profession || 'Not Specified',
-        location: location || 'Unknown',
-        note: note || 'Walk-in customer',
-        pref_facings: [],
-        interest: interests[0] || 'General Query',
-        interests: interests,
-        ...(bhk > 0 ? { bhk } : {}),
-        ...(houseVariant ? { house_variant: houseVariant } : {}),
-      },
-    };
+    const { leadName, source, rawData, leadData } = buildDraftLead();
+    const selfAssignment = crmUser?.role === 'channel_partner' && crmUser.uid
+      ? {
+          assigneeUid: crmUser.uid,
+          assigneeName: crmUser.name || crmUser.email || crmUser.uid,
+          reason: 'Channel partner leads stay assigned to the partner.',
+        }
+      : crmUser?.role === 'sales_exec' && crmUser.uid
+        ? {
+            assigneeUid: crmUser.uid,
+            assigneeName: crmUser.name || crmUser.email || crmUser.uid,
+            reason: 'Sales executive manual leads stay assigned to the creator.',
+          }
+      : null;
 
-    // Close modal immediately for snappy UX
-    resetForm();
-    onClose();
-    showToast('success', `Lead "${leadName}" created successfully!`);
+    if (!assignmentPrepared) {
+      setSavingLead(true);
+      try {
+        const preview = selfAssignment || await resolveLeadAssignment(getAuthToken, source, rawData, false);
+        setAssignmentPreview(preview || {
+          assigneeUid: null,
+          assigneeName: null,
+          reason: 'No automatic assignment was available.',
+        });
+        setAssignmentPrepared(true);
+        showToast('success', 'Review the lead assignment before saving.');
+      } catch (err) {
+        console.error(err);
+        setAssignmentPreview({
+          assigneeUid: null,
+          assigneeName: null,
+          reason: 'Assignment preview failed. You can still save the lead unassigned.',
+        });
+        setAssignmentPrepared(true);
+      } finally {
+        setSavingLead(false);
+      }
+      return;
+    }
+
+    setSavingLead(true);
 
     // Write to Firestore in background
     try {
-      const docRef = await addDoc(collection(db, 'leads'), leadData);
+      const assignment = selfAssignment || await resolveLeadAssignment(getAuthToken, source, rawData, true) || assignmentPreview;
+      const assignedLeadData = {
+        ...leadData,
+        ...(assignment?.assigneeUid ? {
+          assigned_to: assignment.assigneeUid,
+          activity_log: [
+            buildAssignmentEntry(assignment.assigneeUid, assignment.assigneeName, assignment.reason, crmUser?.name || 'System'),
+          ],
+        } : {}),
+      };
+      const docRef = await addDoc(collection(db, 'leads'), assignedLeadData);
       // Geocode location in background
       if (location) {
         geocodeAddress(location).then(geo => {
@@ -281,9 +1019,14 @@ function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void })
           }
         });
       }
+      showToast('success', `Lead "${leadName}" created successfully!`);
+      resetForm();
+      onClose();
     } catch (err) {
       console.error(err);
       showToast('error', `Failed to save lead "${leadName}". Please try again.`);
+    } finally {
+      setSavingLead(false);
     }
   };
 
@@ -295,14 +1038,14 @@ function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void })
             label="Name"
             required
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={e => { setName(e.target.value); markAssignmentDirty(); }}
             placeholder="Customer name"
           />
           <Input
             label="Phone"
             required
             value={phone}
-            onChange={e => setPhone(e.target.value)}
+            onChange={e => { setPhone(e.target.value); markAssignmentDirty(); }}
             placeholder="+91 98765 43210"
           />
         </div>
@@ -311,28 +1054,55 @@ function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void })
             label="Email"
             type="email"
             value={email}
-            onChange={e => setEmail(e.target.value)}
+            onChange={e => { setEmail(e.target.value); markAssignmentDirty(); }}
             placeholder="customer@email.com"
           />
           <Input
             label="Budget"
             type="number"
             value={budget}
-            onChange={e => setBudget(e.target.value)}
+            onChange={e => { setBudget(e.target.value); markAssignmentDirty(); }}
             placeholder="e.g. 5000000"
           />
         </div>
+        {duplicateCandidates.length > 0 && (
+          <div className="rounded-xl border border-mn-warning/40 bg-mn-warning/10 p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-mn-warning" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-black uppercase tracking-wider text-mn-h3">Possible duplicate lead</p>
+                <div className="mt-2 space-y-1.5">
+                  {duplicateCandidates.map(candidate => (
+                    <button
+                      key={candidate.lead.id}
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        resetForm();
+                        onOpenLead(candidate.lead);
+                      }}
+                      className="block w-full rounded-lg border border-mn-border/40 bg-mn-card/70 px-3 py-2 text-left text-xs text-mn-text transition-colors hover:border-mn-warning/60"
+                    >
+                      <span className="font-bold">{candidate.lead.raw_data?.lead_name || 'Existing lead'}</span>
+                      <span className="ml-2 text-mn-text-muted">{candidate.reasons.join(', ')}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <LocationAutocomplete
             label="Location"
             value={location}
-            onChange={setLocation}
+            onChange={value => { setLocation(value); markAssignmentDirty(); }}
             placeholder="e.g. Bogadhi, Mysore"
           />
           <Select
             label="Timeline"
             value={planToBuy}
-            onChange={e => setPlanToBuy(e.target.value)}
+            onChange={e => { setPlanToBuy(e.target.value); markAssignmentDirty(); }}
             placeholder="When planning to buy?"
             options={[
               { value: 'Immediately', label: 'Immediately' },
@@ -347,7 +1117,7 @@ function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void })
           <Input
             label="Profession"
             value={profession}
-            onChange={e => setProfession(e.target.value)}
+            onChange={e => { setProfession(e.target.value); markAssignmentDirty(); }}
             placeholder="e.g. Software Engineer"
           />
           <div>
@@ -377,7 +1147,7 @@ function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void })
               <Select
                 label="BHK"
                 value={String(bhk)}
-                onChange={e => setBhk(Number(e.target.value))}
+                onChange={e => { setBhk(Number(e.target.value)); markAssignmentDirty(); }}
                 placeholder="Select BHK"
                 options={[
                   { value: '0', label: 'Any BHK' },
@@ -389,7 +1159,7 @@ function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void })
               <Select
                 label="House Variant"
                 value={houseVariant}
-                onChange={e => setHouseVariant(e.target.value)}
+                onChange={e => { setHouseVariant(e.target.value); markAssignmentDirty(); }}
                 placeholder="Select variant"
                 options={[
                   { value: '', label: 'Any Variant' },
@@ -403,18 +1173,40 @@ function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void })
           <label className="block text-[10px] font-black text-mn-h3 uppercase tracking-wider mb-1.5">Notes</label>
           <textarea
             value={note}
-            onChange={e => setNote(e.target.value)}
+            onChange={e => { setNote(e.target.value); markAssignmentDirty(); }}
             rows={3}
             placeholder="Any notes from the conversation..."
             className="w-full px-4 py-2.5 bg-mn-input-bg border border-mn-input-border rounded-xl text-sm text-mn-text placeholder:text-mn-text-muted/50 focus:outline-none focus:border-mn-input-focus resize-none"
           />
         </div>
+        {assignmentPrepared && assignmentPreview && (
+          <div className={`rounded-xl border p-3 ${
+            assignmentPreview.assigneeUid
+              ? 'border-mn-success/35 bg-mn-success/10'
+              : 'border-mn-warning/40 bg-mn-warning/10'
+          }`}>
+            <div className="flex items-start gap-2">
+              <PhoneForwarded className={`mt-0.5 h-4 w-4 flex-shrink-0 ${assignmentPreview.assigneeUid ? 'text-mn-success' : 'text-mn-warning'}`} />
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-wider text-mn-h3">Assignment before save</p>
+                <p className="mt-1 text-sm font-bold text-mn-text">
+                  {assignmentPreview.assigneeUid
+                    ? `Assign to ${assignmentPreview.assigneeName || assignmentPreview.assigneeUid}`
+                    : 'Save unassigned'}
+                </p>
+                <p className="mt-0.5 text-xs text-mn-text-muted">{assignmentPreview.reason}</p>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="secondary" className="flex-1" onClick={() => { onClose(); resetForm(); }}>
             Cancel
           </Button>
-          <Button type="submit" className="flex-1">
-            Create Lead
+          <Button type="submit" className="flex-1" disabled={savingLead}>
+            {savingLead
+              ? (assignmentPrepared ? 'Saving...' : 'Checking Assignment...')
+              : (assignmentPrepared ? 'Confirm & Save Lead' : 'Review Assignment')}
           </Button>
         </div>
       </form>
@@ -425,14 +1217,35 @@ function AddLeadModal({ open, onClose }: { open: boolean; onClose: () => void })
 /* ==================== CSV IMPORT MODAL ==================== */
 // Parser + transform live in lib/utils/csvImport.ts so they're testable.
 
-function ImportCSVModal({ open, onClose, userName }: { open: boolean; onClose: () => void; userName: string }) {
+function ImportCSVModal({ open, onClose, userName, existingLeads, getAuthToken }: { open: boolean; onClose: () => void; userName: string; existingLeads: Lead[]; getAuthToken?: () => Promise<string | null> }) {
   const { showToast } = useToast();
   const { crmUser } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<CSVRow[]>([]);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ success: number; failed: number; duplicates: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewDuplicateMap = useMemo(() => {
+    const seenKeys = new Map<string, number>();
+    return preview.map((row, index) => {
+      if (!isValidRow(row)) return null;
+      const leadData = normalizeLead(row, { role: crmUser?.role, uid: crmUser?.uid });
+      const existingDuplicate = findDuplicateLeads(leadData.raw_data, existingLeads).find(candidate => candidate.strength === 'exact');
+      const keys = [
+        ...leadData.duplicate_keys.phones.map(phoneKey => `phone:${phoneKey}`),
+        ...(leadData.duplicate_keys.email ? [`email:${leadData.duplicate_keys.email}`] : []),
+      ];
+      const duplicateRow = keys
+        .map(key => seenKeys.get(key))
+        .find((rowIndex): rowIndex is number => rowIndex !== undefined);
+      keys.forEach(key => {
+        if (!seenKeys.has(key)) seenKeys.set(key, index);
+      });
+      if (existingDuplicate) return describeDuplicateCandidate(existingDuplicate);
+      if (duplicateRow !== undefined) return `duplicate of CSV row ${duplicateRow + 1}`;
+      return null;
+    });
+  }, [crmUser?.role, crmUser?.uid, existingLeads, preview]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -454,6 +1267,8 @@ function ImportCSVModal({ open, onClose, userName }: { open: boolean; onClose: (
     setImporting(true);
     let success = 0;
     let failed = 0;
+    let duplicates = 0;
+    const importKeys = new Set<string>();
 
     for (const row of preview) {
       if (!isValidRow(row)) {
@@ -461,21 +1276,57 @@ function ImportCSVModal({ open, onClose, userName }: { open: boolean; onClose: (
         continue;
       }
       const leadData = normalizeLead(row, { role: crmUser?.role, uid: crmUser?.uid });
+      const keys = [
+        ...leadData.duplicate_keys.phones.map(phoneKey => `phone:${phoneKey}`),
+        ...(leadData.duplicate_keys.email ? [`email:${leadData.duplicate_keys.email}`] : []),
+      ];
+      const duplicate = findDuplicateLeads(leadData.raw_data, existingLeads).some(candidate => candidate.strength === 'exact')
+        || keys.some(key => importKeys.has(key));
+      if (duplicate) {
+        duplicates++;
+        continue;
+      }
       try {
-        await addDoc(collection(db, 'leads'), leadData);
+        const selfAssignment = crmUser?.role === 'channel_partner' && crmUser.uid
+          ? {
+              assigneeUid: crmUser.uid,
+              assigneeName: crmUser.name || crmUser.email || crmUser.uid,
+              reason: 'Channel partner CSV leads stay assigned to the partner.',
+            }
+          : crmUser?.role === 'sales_exec' && crmUser.uid
+            ? {
+                assigneeUid: crmUser.uid,
+                assigneeName: crmUser.name || crmUser.email || crmUser.uid,
+                reason: 'Sales executive CSV leads stay assigned to the creator.',
+              }
+            : null;
+        const assignment = selfAssignment || await resolveLeadAssignment(getAuthToken, leadData.source, leadData.raw_data, true);
+        await addDoc(collection(db, 'leads'), {
+          ...leadData,
+          ...(assignment?.assigneeUid ? {
+            assigned_to: assignment.assigneeUid,
+            activity_log: [
+              buildAssignmentEntry(assignment.assigneeUid, assignment.assigneeName, assignment.reason, userName || crmUser?.name || 'System'),
+            ],
+          } : {}),
+        });
+        keys.forEach(key => importKeys.add(key));
         success++;
       } catch {
         failed++;
       }
     }
 
-    setImportResult({ success, failed });
+    setImportResult({ success, failed, duplicates });
     setImporting(false);
     if (success > 0) {
       showToast('success', `${success} lead${success > 1 ? 's' : ''} imported successfully!`);
     }
     if (failed > 0) {
       showToast('error', `${failed} row${failed > 1 ? 's' : ''} failed to import.`);
+    }
+    if (duplicates > 0) {
+      showToast('error', `${duplicates} duplicate row${duplicates > 1 ? 's were' : ' was'} skipped.`);
     }
   };
 
@@ -546,6 +1397,7 @@ function ImportCSVModal({ open, onClose, userName }: { open: boolean; onClose: (
                     <th className="px-3 py-2 text-left font-black text-mn-h3 uppercase tracking-wider">Budget</th>
                     <th className="px-3 py-2 text-left font-black text-mn-h3 uppercase tracking-wider">Location</th>
                     <th className="px-3 py-2 text-left font-black text-mn-h3 uppercase tracking-wider">Interest</th>
+                    <th className="px-3 py-2 text-left font-black text-mn-h3 uppercase tracking-wider">Duplicate</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -553,8 +1405,9 @@ function ImportCSVModal({ open, onClose, userName }: { open: boolean; onClose: (
                     const name = getLeadName(row);
                     const phone = getPhone(row);
                     const invalid = name === 'Unknown' && phone === 'N/A';
+                    const duplicateLabel = previewDuplicateMap[idx];
                     return (
-                      <tr key={idx} className={`border-t border-mn-border/20 ${invalid ? 'bg-mn-danger/5' : ''}`}>
+                      <tr key={idx} className={`border-t border-mn-border/20 ${invalid ? 'bg-mn-danger/5' : duplicateLabel ? 'bg-mn-warning/10' : ''}`}>
                         <td className="px-3 py-2 text-mn-text-muted">{idx + 1}</td>
                         <td className="px-3 py-2 text-mn-text font-bold">
                           {invalid && <AlertTriangle className="w-3 h-3 text-mn-danger inline mr-1" />}
@@ -565,6 +1418,14 @@ function ImportCSVModal({ open, onClose, userName }: { open: boolean; onClose: (
                         <td className="px-3 py-2 text-mn-text">{row.budget || '—'}</td>
                         <td className="px-3 py-2 text-mn-text">{row.location || '—'}</td>
                         <td className="px-3 py-2 text-mn-text">{row.interest || '—'}</td>
+                        <td className="px-3 py-2 text-mn-text-muted">
+                          {duplicateLabel ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-mn-warning/15 px-2 py-0.5 text-[10px] font-bold text-mn-warning">
+                              <AlertTriangle className="h-3 w-3" />
+                              {duplicateLabel}
+                            </span>
+                          ) : '—'}
+                        </td>
                       </tr>
                     );
                   })}
@@ -580,6 +1441,9 @@ function ImportCSVModal({ open, onClose, userName }: { open: boolean; onClose: (
             <span className="text-mn-success font-bold">{importResult.success} imported</span>
             {importResult.failed > 0 && (
               <span className="text-mn-danger font-bold ml-3">{importResult.failed} failed</span>
+            )}
+            {importResult.duplicates > 0 && (
+              <span className="text-mn-warning font-bold ml-3">{importResult.duplicates} duplicates skipped</span>
             )}
           </div>
         )}
@@ -616,6 +1480,7 @@ const BHK_PROPERTY_TYPES = ['Apartment', 'Villa', 'Individual House'];
 const HOUSE_VARIANTS = ['Simplex', 'Duplex', 'Triplex', 'Quadraplex'];
 const BHK_OPTIONS = [1, 2, 3, 4, 5, 6];
 const THRESHOLD_OPTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
+const OBJECTION_OPTIONS: LeadObjection[] = ['price', 'location', 'legal', 'family_decision', 'loan_payment', 'comparison', 'timing'];
 
 const STATUS_OPTIONS = [
   'New', 'First Call', 'Nurturing', 'Property Matched', 'Site Visit', 'Booked', 'Closed', 'Rejected',
@@ -623,16 +1488,25 @@ const STATUS_OPTIONS = [
 
 type DetailTab = 'details' | 'activity' | 'visits';
 
-function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', userUid = '', inventory = [], projects: allProjectsList = [], globalThresholdPercent = 0 }: { lead: Lead; onClose: () => void; isAdmin?: boolean; userName?: string; userUid?: string; inventory?: InventoryUnit[]; projects?: Project[]; globalThresholdPercent?: number }) {
+function LeadDetailModal({ lead, onClose, isAdmin = false, canDeleteLead = false, userName = 'Admin', userUid = '', inventory = [], projects: allProjectsList = [], globalThresholdPercent = 0, existingLeads = [], assignableUsers = [], assigneeNameByUid = {}, getAuthToken }: { lead: Lead; onClose: () => void; isAdmin?: boolean; canDeleteLead?: boolean; userName?: string; userUid?: string; inventory?: InventoryUnit[]; projects?: Project[]; globalThresholdPercent?: number; existingLeads?: Lead[]; assignableUsers?: CRMUser[]; assigneeNameByUid?: Record<string, string>; getAuthToken?: () => Promise<string | null> }) {
   const { showToast } = useToast();
+  const { crmUser } = useAuth();
   const raw = lead.raw_data;
+  const isChannelPartnerSelfLead = crmUser?.role === 'channel_partner' && lead.owner_uid === crmUser.uid;
+  const canSelfAssignChannelPartner = Boolean(isChannelPartnerSelfLead && (!lead.assigned_to || lead.assigned_to === crmUser?.uid));
+  const canSelfAssignSalesExec = Boolean(crmUser?.role === 'sales_exec' && !lead.assigned_to && !isChannelPartnerLead(lead));
+  const canEditAssignee = isAdmin || canSelfAssignChannelPartner || canSelfAssignSalesExec;
+  const initialAssignedTo = canSelfAssignChannelPartner ? (lead.assigned_to || crmUser?.uid || '') : (lead.assigned_to || '');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [mergingLead, setMergingLead] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>('details');
 
   // Editable fields
   const [status, setStatus] = useState(lead.status);
+  const [assignedTo, setAssignedTo] = useState(initialAssignedTo);
   const [name, setName] = useState(raw.lead_name);
   const [phone, setPhone] = useState(raw.phone);
   const [email, setEmail] = useState(raw.email);
@@ -644,6 +1518,9 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
   const [bhk, setBhk] = useState<number>(raw.bhk || 0);
   const [houseVariant, setHouseVariant] = useState(raw.house_variant || '');
   const [matchThreshold, setMatchThreshold] = useState<number>(lead.match_threshold || 0); // 0 = use global
+  const [objections, setObjections] = useState<LeadObjection[]>(lead.objections || []);
+  const [governanceNote, setGovernanceNote] = useState('');
+  const [governanceReasonCategory, setGovernanceReasonCategory] = useState<StageMoveReasonCategory | ''>('');
   const [showMatchDiagnosis, setShowMatchDiagnosis] = useState(false);
 
   const toggleInterest = (opt: string) => {
@@ -652,6 +1529,18 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
 
   const showBhkField = interests.some(i => BHK_PROPERTY_TYPES.includes(i));
   const showVariantField = interests.includes('Individual House');
+  const toggleObjection = (objection: LeadObjection) => {
+    setObjections(prev => prev.includes(objection) ? prev.filter(item => item !== objection) : [...prev, objection]);
+  };
+
+  useEffect(() => {
+    setObjections(lead.objections || []);
+  }, [lead.id, lead.objections]);
+
+  useEffect(() => {
+    setGovernanceNote('');
+    setGovernanceReasonCategory('');
+  }, [lead.id, status]);
 
   // Activity log
   const [newNote, setNewNote] = useState('');
@@ -687,23 +1576,101 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
   // Notes Polish (Gemini)
   const [polishing, setPolishing] = useState(false);
 
+  const mergeCandidates = useMemo(() => {
+    const detected = findDuplicateLeads(raw, existingLeads, { excludeLeadId: lead.id });
+    const detectedIds = new Set(detected.map(candidate => candidate.lead.id));
+    const manualOptions = existingLeads
+      .filter(item => item.id !== lead.id && !detectedIds.has(item.id))
+      .slice(0, 20)
+      .map(item => ({ lead: item, strength: 'likely' as const, reasons: ['manual merge option'] }));
+    return [...detected, ...manualOptions];
+  }, [existingLeads, lead.id, raw]);
+
+  const selectedMergeCandidate = mergeCandidates.find(candidate => candidate.lead.id === mergeTargetId) || null;
+
   // Hover tooltip for tagged properties
   const [hoveredProp, setHoveredProp] = useState<{ projectId: string; rect: DOMRect } | null>(null);
   const hoverTimer = useRef<number | null>(null);
 
-  // Delete lead (admin only)
+  // Archive lead (admin only). The server keeps the history for audit/reporting
+  // and releases any active booked unit transactionally.
   const handleDeleteLead = async () => {
+    if (!canDeleteLead) {
+      showToast('error', 'Your role does not have permission to archive leads.');
+      return;
+    }
     setDeleting(true);
     try {
-      await deleteDoc(doc(db, 'leads', lead.id));
-      showToast('success', `Lead "${raw.lead_name}" deleted.`);
+      const token = await getAuthToken?.();
+      if (!token) {
+        showToast('error', 'Sign in again before archiving this lead.');
+        return;
+      }
+      const response = await fetch('/api/leads/lifecycle', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'archive',
+          leadId: lead.id,
+          reason: 'Archived from Lead Detail.',
+        }),
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string; releasedUnitId?: string | null };
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to archive lead.');
+      }
+      showToast('success', `Lead "${raw.lead_name}" archived${data.releasedUnitId ? ' and booked unit released' : ''}.`);
       onClose();
     } catch (err) {
       console.error(err);
-      showToast('error', 'Failed to delete lead.');
+      showToast('error', `Failed to archive lead: ${(err as Error)?.message || 'permission or connection error'}`);
     } finally {
       setDeleting(false);
       setConfirmDelete(false);
+    }
+  };
+
+  const handleMergeLead = async () => {
+    if (!selectedMergeCandidate) {
+      showToast('error', 'Select a duplicate lead to merge.');
+      return;
+    }
+    setMergingLead(true);
+    try {
+      const duplicate = selectedMergeCandidate.lead;
+      const token = await getAuthToken?.();
+      if (!token) {
+        showToast('error', 'Sign in again before merging leads.');
+        return;
+      }
+      const response = await fetch('/api/leads/lifecycle', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'merge',
+          primaryLeadId: lead.id,
+          duplicateLeadId: duplicate.id,
+        }),
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to merge duplicate lead.');
+      }
+
+      showToast('success', `Merged "${duplicate.raw_data.lead_name}" into "${raw.lead_name}".`);
+      setMergeTargetId('');
+      onClose();
+    } catch (err) {
+      console.error(err);
+      showToast('error', (err as Error).message || 'Failed to merge duplicate lead.');
+    } finally {
+      setMergingLead(false);
     }
   };
 
@@ -770,49 +1737,42 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
     return () => { cancelled = true; };
   }, [pickerProjectId]);
 
-  // Commit the booking: write lead.booked_unit + flip status to Booked + mark unit as Booked
-  // in a single batch so the two documents can never drift out of sync.
+  // Commit the booking through the server so lead and inventory changes stay transactional.
   const handleBookUnit = async (unit: InventoryUnit) => {
-    const unitLabel = unit.fields?.unit_number || unit.fields?.plot_number || unit.id.slice(-6).toUpperCase();
-    const newBooking: BookedUnit = {
-      projectId: unit.projectId,
-      projectName: unit.projectName,
-      unitId: unit.id,
-      unitLabel,
-      booked_at: new Date().toISOString(),
-      booked_by: userName,
-    };
+    if (!isAdmin) {
+      showToast('error', 'Booking a unit requires Admin or Super Admin access.');
+      return;
+    }
     setSavingBooking(true);
     try {
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'leads', lead.id), {
-        status: 'Booked',
-        booked_unit: newBooking,
-        lane_moved_at: serverTimestamp(),
+      const token = await getAuthToken?.();
+      if (!token) {
+        showToast('error', 'Sign in again before booking a unit.');
+        return;
+      }
+      const response = await fetch('/api/leads/booking', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'book',
+          leadId: lead.id,
+          unitId: unit.id,
+        }),
       });
-      batch.update(doc(db, 'inventory', unit.id), {
-        status: 'Booked',
-        booked_by_lead_id: lead.id,
-      });
-      // Activity log entry (separate update — arrayUnion not supported in batch.update payload
-      // merge cleanly alongside status field due to Firestore types, use updateDoc after batch)
-      await batch.commit();
-      await updateDoc(doc(db, 'leads', lead.id), {
-        activity_log: arrayUnion({
-          id: `book_${Date.now()}`,
-          type: 'status_change',
-          text: `Booked ${unit.projectName} — Unit ${unitLabel}`,
-          author: userName,
-          created_at: new Date().toISOString(),
-        } as ActivityLogEntry),
-      });
-      setBookedUnit(newBooking);
+      const data = await response.json().catch(() => ({})) as { error?: string; bookedUnit?: BookedUnit };
+      if (!response.ok || !data.bookedUnit) {
+        throw new Error(data.error || 'Failed to book unit.');
+      }
+      setBookedUnit(data.bookedUnit);
       setStatus('Booked');
       setPickerProjectId('');
-      showToast('success', `Booked ${unit.projectName} — Unit ${unitLabel}`);
+      showToast('success', `Booked ${data.bookedUnit.projectName} - Unit ${data.bookedUnit.unitLabel}`);
     } catch (err) {
       console.error('Failed to book unit:', err);
-      showToast('error', 'Failed to book unit. Check connection.');
+      showToast('error', (err as Error).message || 'Failed to book unit. Check connection.');
     } finally {
       setSavingBooking(false);
     }
@@ -821,25 +1781,42 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
   // Release the held unit — moves the lead back to 'Site Visit' lane and frees the inventory unit.
   const handleUnbookUnit = async () => {
     if (!bookedUnit) return;
+    if (!isAdmin) {
+      showToast('error', 'Releasing a booked unit requires Admin or Super Admin access.');
+      return;
+    }
     setSavingBooking(true);
     try {
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'leads', lead.id), {
-        status: 'Site Visit',
-        booked_unit: deleteField(),
-        lane_moved_at: serverTimestamp(),
+      const token = await getAuthToken?.();
+      if (!token) {
+        showToast('error', 'Sign in again before releasing a booked unit.');
+        return;
+      }
+      const response = await fetch('/api/leads/booking', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'release',
+          leadId: lead.id,
+          unitId: bookedUnit.unitId,
+          newStatus: 'Site Visit',
+          note: 'Released from lead detail.',
+          reasonCategory: 'other',
+        }),
       });
-      batch.update(doc(db, 'inventory', bookedUnit.unitId), {
-        status: 'Available',
-        booked_by_lead_id: deleteField(),
-      });
-      await batch.commit();
+      const data = await response.json().catch(() => ({})) as { error?: string; status?: string };
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to release unit.');
+      }
       setBookedUnit(null);
-      setStatus('Site Visit');
+      setStatus(data.status || 'Site Visit');
       showToast('success', 'Unit released. Lead moved back to Site Visit.');
     } catch (err) {
       console.error('Failed to unbook unit:', err);
-      showToast('error', 'Failed to release unit.');
+      showToast('error', (err as Error).message || 'Failed to release unit.');
     } finally {
       setSavingBooking(false);
     }
@@ -903,13 +1880,12 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
     }
     setSendingPropertyDetails(true);
     try {
-      const configSnap = await getDoc(doc(db, 'crm_config', 'whatsapp'));
-      if (!configSnap.exists() || !configSnap.data().enabled) {
-        showToast('error', 'WhatsApp is not configured. Go to Admin Console to set it up.');
+      const authToken = await getAuthToken?.();
+      if (!authToken) {
+        showToast('error', 'Sign in again before sending WhatsApp messages.');
         setSendingPropertyDetails(false);
         return;
       }
-      const waConfig = configSnap.data() as WhatsAppConfig;
 
       // Clean phone number
       let toPhone = raw.phone.replace(/[\s\-()]/g, '');
@@ -959,22 +1935,19 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
       const messageBody = `Hello ${raw.lead_name}! 👋\n\nThank you for your interest in real estate. Here are the property details curated for you:\n\n${propertyLines}\n\n———————————\n\nWe'd love to help you find your dream property! Feel free to reach out for more details, floor plans, or to schedule a site visit.\n\n📞 Call us anytime\n🏠 Visit us for a personal tour\n\n_— Elite Build Infra Tech_`;
 
       // Send the text message first
-      const response = await fetch(
-        `https://graph.facebook.com/v21.0/${waConfig.phone_number_id}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${waConfig.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            messaging_product: 'whatsapp',
-            to: toPhone,
-            type: 'text',
-            text: { body: messageBody },
-          }),
-        }
-      );
+      const response = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          to: toPhone,
+          type: 'text',
+          leadId: lead.id,
+          text: { body: messageBody },
+        }),
+      });
 
       // Send ALL images (hero + gallery) for each property
       for (const { prop, project } of projectDetails) {
@@ -985,27 +1958,24 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
         // Send up to 5 images per property to avoid spam
         for (const imgUrl of images.slice(0, 5)) {
           try {
-            await fetch(
-              `https://graph.facebook.com/v21.0/${waConfig.phone_number_id}/messages`,
-              {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${waConfig.access_token}`,
-                  'Content-Type': 'application/json',
+            await fetch('/api/whatsapp/send', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${authToken}`,
+              },
+              body: JSON.stringify({
+                to: toPhone,
+                type: 'image',
+                leadId: lead.id,
+                image: {
+                  link: imgUrl,
+                  caption: images.indexOf(imgUrl) === 0
+                    ? `📸 ${prop.projectName} — ${prop.location}`
+                    : `${prop.projectName}`,
                 },
-                body: JSON.stringify({
-                  messaging_product: 'whatsapp',
-                  to: toPhone,
-                  type: 'image',
-                  image: {
-                    link: imgUrl,
-                    caption: images.indexOf(imgUrl) === 0
-                      ? `📸 ${prop.projectName} — ${prop.location}`
-                      : `${prop.projectName}`,
-                  },
-                }),
-              }
-            );
+              }),
+            });
           } catch (imgErr) {
             console.error('Failed to send image:', imgErr);
           }
@@ -1027,9 +1997,8 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
         });
         showToast('success', 'Property details sent via WhatsApp!');
       } else {
-        const errText = await response.text();
-        console.error('WhatsApp API error:', errText);
-        showToast('error', 'Failed to send WhatsApp message. Check config.');
+        const data = await response.json().catch(() => null);
+        showToast('error', data?.error || 'Failed to send WhatsApp message. Check server config.');
       }
     } catch (err) {
       console.error(err);
@@ -1049,33 +2018,142 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
   }, [lead.activity_log]);
 
   const handleSave = async () => {
+    if (!isAdmin && status !== lead.status && (status === 'Booked' || lead.status === 'Booked')) {
+      showToast('error', 'Booked lead stage changes require Admin or Super Admin access.');
+      return;
+    }
     // Block saving status=Booked without a unit selection — protects against the
     // double-booking scenario when the user changes status via the dropdown.
     if (status === 'Booked' && !bookedUnit) {
       showToast('error', 'Select a booked unit before saving with status "Booked".');
       return;
     }
+    if (governanceRequirement && !governanceNote.trim()) {
+      showToast('error', `${governanceRequirement.label} is required for this status change.`);
+      return;
+    }
+    if (governanceRequirement && !governanceReasonCategory) {
+      showToast('error', 'Select a reason category for this status change.');
+      return;
+    }
+    if (canSelfAssignChannelPartner && assignedTo !== crmUser?.uid) {
+      showToast('error', 'Channel Partner leads must stay assigned to the partner.');
+      return;
+    }
+    if (canSelfAssignSalesExec && assignedTo && assignedTo !== crmUser?.uid) {
+      showToast('error', 'Sales Executives can only assign an unassigned lead to themselves.');
+      return;
+    }
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'leads', lead.id), {
-        status,
-        raw_data: {
-          ...raw,
-          lead_name: name.trim(),
-          phone: phone.trim(),
-          email: email.trim() || 'N/A',
-          budget: Number(budget) || 0,
-          plan_to_buy: planToBuy,
-          profession: profession,
-          location: location,
-          interest: interests[0] || raw.interest || 'General Query',
-          interests: interests,
-          ...(bhk > 0 ? { bhk } : { bhk: 0 }),
-          ...(houseVariant ? { house_variant: houseVariant } : {}),
-        },
+      const rawData = {
+        ...raw,
+        lead_name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim() || 'N/A',
+        budget: Number(budget) || 0,
+        plan_to_buy: planToBuy,
+        profession: profession,
+        location: location,
+        interest: interests[0] || raw.interest || 'General Query',
+        interests: interests,
+        ...(bhk > 0 ? { bhk } : { bhk: 0 }),
+        ...(houseVariant ? { house_variant: houseVariant } : {}),
+      };
+      const assigneeEditable = isAdmin || canSelfAssignChannelPartner || canSelfAssignSalesExec;
+      const reassigned = assigneeEditable && assignedTo !== (lead.assigned_to || '');
+      const previousObjections = lead.objections || [];
+      const objectionsChanged = previousObjections.slice().sort().join('|') !== objections.slice().sort().join('|');
+      const selectedAssigneeName = assignedTo ? assigneeNameByUid[assignedTo] || assignedTo : 'Unassigned';
+      const activityEntries: ActivityLogEntry[] = [];
+      const bookedStatusTransition = isAdmin && lead.status === 'Booked' && status !== lead.status;
+      const bookedStatusToken = bookedStatusTransition ? await getAuthToken?.() : null;
+      if (bookedStatusTransition && !bookedStatusToken) {
+        throw new Error('Sign in again before changing a booked lead.');
+      }
+      const updateData: Record<string, unknown> = {
+        raw_data: rawData,
+        duplicate_keys: buildDuplicateKeys(rawData),
         interested_properties: interestedProperties,
+        objections,
         ...(matchThreshold > 0 ? { match_threshold: matchThreshold } : { match_threshold: null }),
-      });
+      };
+      if (!bookedStatusTransition) {
+        updateData.status = status;
+      }
+      if (isAdmin) {
+        updateData.assigned_to = assignedTo || null;
+      } else if (canSelfAssignChannelPartner && assignedTo === crmUser?.uid && assignedTo !== (lead.assigned_to || '')) {
+        updateData.assigned_to = assignedTo;
+      } else if (canSelfAssignSalesExec && assignedTo === crmUser?.uid && !lead.assigned_to) {
+        updateData.assigned_to = assignedTo;
+      }
+      if (reassigned) {
+        activityEntries.push({
+          id: `assign_manual_${Date.now()}`,
+          type: 'lead_assigned',
+          text: assignedTo ? `Lead reassigned to ${selectedAssigneeName}.` : 'Lead unassigned.',
+          author: userName,
+          created_at: new Date().toISOString(),
+          ...(assignedTo ? { assigned_to: assignedTo } : {}),
+        });
+      }
+      if (status !== lead.status && !bookedStatusTransition) {
+        activityEntries.push(buildStageMoveLog(lead, status, userName, governanceNote, governanceReasonCategory));
+        updateData.lane_moved_at = serverTimestamp();
+      }
+      if (objectionsChanged) {
+        const labels = objections.map(item => LEAD_OBJECTION_LABELS[item]).join(', ') || 'None';
+        activityEntries.push({
+          id: `objection_${Date.now()}`,
+          type: 'objection_updated',
+          text: `Buyer objections updated: ${labels}.`,
+          author: userName,
+          created_at: new Date().toISOString(),
+        });
+      }
+      if (activityEntries.length > 0) {
+        updateData.activity_log = arrayUnion(...activityEntries);
+      }
+      await updateDoc(doc(db, 'leads', lead.id), updateData);
+      if (reassigned) {
+        try {
+          const syncToken = await getAuthToken?.();
+          if (syncToken) {
+            await fetch('/api/whatsapp/sync-lead', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${syncToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ leadId: lead.id }),
+            });
+          }
+        } catch (syncErr) {
+          console.warn('Failed to sync WhatsApp conversation access:', syncErr);
+        }
+      }
+      if (bookedStatusTransition) {
+        const response = await fetch('/api/leads/booking', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${bookedStatusToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'move_booked',
+            leadId: lead.id,
+            unitId: bookedUnit?.unitId,
+            newStatus: status,
+            note: governanceNote,
+            reasonCategory: governanceReasonCategory,
+          }),
+        });
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to update booked lead.');
+        }
+      }
       showToast('success', `Lead "${name}" updated!`);
       onClose();
 
@@ -1089,7 +2167,7 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
       }
     } catch (err) {
       console.error(err);
-      showToast('error', 'Failed to update lead.');
+      showToast('error', (err as Error).message || 'Failed to update lead.');
     } finally {
       setSaving(false);
     }
@@ -1100,9 +2178,17 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
     if (!text) return;
     setPolishing(true);
     try {
+      const authToken = await getAuthToken?.();
+      if (!authToken) {
+        showToast('error', 'Sign in again before polishing notes.');
+        return;
+      }
       const res = await fetch('/api/polish-note', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
         body: JSON.stringify({ text }),
       });
       const data = await res.json();
@@ -1173,7 +2259,7 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
         activity_log: arrayUnion(logEntry),
       });
       // Send WhatsApp confirmation
-      sendWhatsAppConfirmation(lead, visit);
+      sendWhatsAppConfirmation(lead, visit, getAuthToken);
       setShowVisitForm(false);
       setVisitDate('');
       setVisitLocation('');
@@ -1238,12 +2324,63 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
     () => (lead.site_visits || []).sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime()),
     [lead.site_visits],
   );
-
+  const governanceRequirement = useMemo(
+    () => status !== lead.status ? getRequiredGovernanceNoteForStatusChange(lead.status, status) : null,
+    [lead.status, status],
+  );
+  const dataQualityIssues = useMemo(() => getLeadDataQualityIssues({
+    ...lead,
+    status,
+    assigned_to: assignedTo || null,
+    raw_data: {
+      ...raw,
+      lead_name: name,
+      phone,
+      email,
+      budget: Number(budget) || 0,
+      plan_to_buy: planToBuy,
+      profession,
+      location,
+      interest: interests[0] || raw.interest || '',
+      interests,
+      bhk,
+      house_variant: houseVariant,
+    },
+    interested_properties: interestedProperties,
+    booked_unit: bookedUnit,
+    objections,
+  }), [assignedTo, bhk, bookedUnit, budget, email, houseVariant, interestedProperties, interests, lead, location, name, objections, phone, planToBuy, profession, raw, status]);
   const TABS = [
     { id: 'details' as DetailTab, label: 'Details' },
     { id: 'activity' as DetailTab, label: `Activity (${allActivity.length})` },
     { id: 'visits' as DetailTab, label: `Site Visits (${siteVisits.length})` },
   ];
+  const statusOptions = useMemo(() => {
+    if (isAdmin || lead.status === 'Booked') return STATUS_OPTIONS;
+    return STATUS_OPTIONS.filter(option => option !== 'Booked');
+  }, [isAdmin, lead.status]);
+  const assigneeOptionsForLead = useMemo(() => {
+    const options = new Map<string, string>();
+    const addUser = (user: CRMUser) => {
+      if (user.active) options.set(user.uid, user.name || user.email || user.uid);
+    };
+
+    if (isAdmin) {
+      assignableUsers.forEach(addUser);
+    } else if ((canSelfAssignChannelPartner || canSelfAssignSalesExec) && crmUser) {
+      addUser(crmUser);
+    }
+
+    if (lead.assigned_to && !options.has(lead.assigned_to)) {
+      options.set(lead.assigned_to, assigneeNameByUid[lead.assigned_to] || lead.assigned_to);
+    }
+
+    return Array.from(options.entries()).map(([value, label]) => ({ value, label }));
+  }, [assignableUsers, assigneeNameByUid, canSelfAssignChannelPartner, canSelfAssignSalesExec, crmUser, isAdmin, lead.assigned_to]);
+
+  useEffect(() => {
+    setAssignedTo(initialAssignedTo);
+  }, [initialAssignedTo, lead.id]);
 
   return (
     <Modal open onClose={onClose} title={`Lead: ${raw.lead_name}`} maxWidth="max-w-4xl">
@@ -1255,7 +2392,17 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
               label="Status"
               value={status}
               onChange={e => setStatus(e.target.value)}
-              options={STATUS_OPTIONS.map(s => ({ value: s, label: s }))}
+              options={statusOptions.map(s => ({ value: s, label: s }))}
+            />
+          </div>
+          <div className="w-52">
+            <Select
+              label="Assignee"
+              value={assignedTo}
+              onChange={e => setAssignedTo(e.target.value)}
+              disabled={!canEditAssignee}
+              placeholder="Unassigned"
+              options={assigneeOptionsForLead}
             />
           </div>
           {lead.ai_audit && (
@@ -1289,17 +2436,77 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
             >
               Schedule Visit
             </Button>
-            {isAdmin && (
+            {canDeleteLead && (
               <Button
                 variant="danger"
                 icon={<Trash2 className="w-4 h-4" />}
                 onClick={() => setConfirmDelete(true)}
               >
-                Delete
+                Archive
               </Button>
             )}
           </div>
         </div>
+
+        {governanceRequirement && (
+          <div className="rounded-2xl border border-mn-warning/35 bg-mn-warning/10 p-4">
+            <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-mn-warning">
+              Reason Category
+              <span className="text-mn-danger ml-0.5">*</span>
+            </label>
+            <select
+              value={governanceReasonCategory}
+              onChange={event => setGovernanceReasonCategory(event.target.value as StageMoveReasonCategory)}
+              className="mb-4 h-11 w-full rounded-2xl border border-mn-input-border bg-mn-input-bg px-4 text-sm font-bold text-mn-text shadow-sm transition-all focus:border-mn-input-focus focus:outline-none focus:ring-4 focus:ring-mn-ring"
+            >
+              <option value="">Select reason</option>
+              {getStageMoveReasonOptions(governanceRequirement.kind).map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-mn-warning">
+              {governanceRequirement.label}
+              <span className="text-mn-danger ml-0.5">*</span>
+            </label>
+            <textarea
+              value={governanceNote}
+              onChange={event => setGovernanceNote(event.target.value)}
+              rows={3}
+              placeholder={
+                governanceRequirement.kind === 'rejection'
+                  ? 'Why is this lead being rejected?'
+                  : governanceRequirement.kind === 'booking_cancellation'
+                    ? 'Why is this booking being cancelled?'
+                    : 'Add booking amount, payment notes, or closure context...'
+              }
+              className="w-full resize-none rounded-2xl border border-mn-input-border bg-mn-input-bg px-4 py-3 text-sm font-medium text-mn-text shadow-sm transition-all placeholder:text-mn-text-muted/50 focus:border-mn-input-focus focus:outline-none focus:ring-4 focus:ring-mn-ring"
+            />
+          </div>
+        )}
+
+        {dataQualityIssues.length > 0 && (
+          <div className="rounded-2xl border border-mn-border/45 bg-mn-surface/70 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-mn-warning" />
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-mn-text-muted">Data Quality</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {dataQualityIssues.map(issue => (
+                <div
+                  key={issue.id}
+                  className={`rounded-xl border px-3 py-2 ${
+                    issue.severity === 'blocking'
+                      ? 'border-mn-danger/25 bg-mn-danger/8'
+                      : 'border-mn-warning/25 bg-mn-warning/8'
+                  }`}
+                >
+                  <p className={`text-xs font-black ${issue.severity === 'blocking' ? 'text-mn-danger' : 'text-mn-warning'}`}>{issue.label}</p>
+                  <p className="mt-1 text-xs text-mn-text-muted">{issue.detail}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex items-center gap-1 border-b border-mn-border/30">
@@ -1325,7 +2532,7 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
               {/* Booked Property — required when status === 'Booked' to prevent double-booking.
                   Picker only shows Available units (Firestore query filter); a unit already held
                   by another lead is not selectable here. */}
-              {(status === 'Booked' || bookedUnit) && (
+              {(isAdmin || bookedUnit) && (status === 'Booked' || bookedUnit) && (
                 <div className="p-4 bg-mn-warning/5 border border-mn-warning/30 rounded-xl space-y-3">
                   <div className="flex items-center gap-2">
                     <Home className="w-4 h-4 text-mn-warning" />
@@ -1340,14 +2547,16 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
                         <p className="text-sm font-bold text-mn-text truncate">{bookedUnit.projectName}</p>
                         <p className="text-xs text-mn-text-muted">Unit <span className="font-bold text-mn-text">{bookedUnit.unitLabel}</span> &middot; Booked by {bookedUnit.booked_by} on {new Date(bookedUnit.booked_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>
                       </div>
-                      <Button
-                        variant="secondary"
-                        icon={<X className="w-3.5 h-3.5" />}
-                        disabled={savingBooking}
-                        onClick={handleUnbookUnit}
-                      >
-                        {savingBooking ? 'Releasing...' : 'Release Unit'}
-                      </Button>
+                      {isAdmin && (
+                        <Button
+                          variant="secondary"
+                          icon={<X className="w-3.5 h-3.5" />}
+                          disabled={savingBooking}
+                          onClick={handleUnbookUnit}
+                        >
+                          {savingBooking ? 'Releasing...' : 'Release Unit'}
+                        </Button>
+                      )}
                     </div>
                   ) : (
                     <>
@@ -1498,6 +2707,39 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
                 </div>
               )}
 
+              <div className="rounded-2xl border border-mn-warning/25 bg-mn-warning/5 p-4">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-[0.16em] text-mn-warning">Buyer Objections</h3>
+                    <p className="mt-1 text-xs font-semibold text-mn-text-muted">
+                      Mark what is blocking this buyer. Copilot will adapt score, pitch, and next action.
+                    </p>
+                  </div>
+                  {objections.length > 0 && (
+                    <Badge variant="warning">{objections.length} active</Badge>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {OBJECTION_OPTIONS.map(option => {
+                    const active = objections.includes(option);
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => toggleObjection(option)}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-black transition-all ${
+                          active
+                            ? 'border-mn-warning/45 bg-mn-warning/18 text-mn-warning'
+                            : 'border-mn-border/60 bg-mn-card/70 text-mn-text-muted hover:border-mn-warning/35 hover:text-mn-text'
+                        }`}
+                      >
+                        {LEAD_OBJECTION_LABELS[option]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Match diagnosis — why isn't this lead auto-matching? */}
               <div>
                 <button
@@ -1594,6 +2836,7 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
                 <PropertySearch
                   taggedProjectIds={interestedProperties.map(p => p.projectId)}
                   onTagProperty={handleTagProperty}
+                  projects={allProjectsList}
                 />
 
                 {/* Tagged properties */}
@@ -1789,6 +3032,9 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
                         {entry.type === 'status_change' && <CheckCircle className="w-4 h-4 text-mn-accent" />}
                         {entry.type === 'callback_scheduled' && <PhoneForwarded className="w-4 h-4 text-mn-warning" />}
                         {entry.type === 'property_details_sent' && <Building2 className="w-4 h-4 text-mn-h2" />}
+                        {entry.type === 'lead_merged' && <GitMerge className="w-4 h-4 text-mn-warning" />}
+                        {entry.type === 'task_completed' && <CheckCircle className="w-4 h-4 text-mn-success" />}
+                        {entry.type === 'objection_updated' && <AlertTriangle className="w-4 h-4 text-mn-warning" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-mn-text whitespace-pre-wrap">{entry.text}</p>
@@ -1828,6 +3074,7 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
                       label="Visit Location"
                       value={visitLocation}
                       onChange={setVisitLocation}
+                      projects={allProjectsList}
                       placeholder="Search project by name or location..."
                     />
                   </div>
@@ -1940,7 +3187,7 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
                               <button
                                 onClick={() => handleDeleteVisit(visit.id)}
                                 disabled={deletingVisit || !deleteVisitNotes.trim()}
-                                className="px-3 py-1.5 text-xs font-bold text-white bg-mn-danger rounded-lg hover:bg-mn-danger/80 disabled:opacity-50"
+                                className="px-3 py-1.5 text-xs font-bold text-mn-danger-contrast bg-mn-danger-action rounded-lg hover:bg-mn-danger-action/90 disabled:border disabled:border-mn-border/70 disabled:bg-mn-card/80 disabled:text-mn-text-muted"
                               >
                                 {deletingVisit ? 'Cancelling...' : 'Confirm Cancellation'}
                               </button>
@@ -1998,13 +3245,52 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
           </div>
         )}
 
-        {/* Delete confirmation (admin only) */}
+        {/* Duplicate merge (admin only) */}
+        {isAdmin && (
+          <div className="p-4 bg-mn-surface border border-mn-border/30 rounded-xl space-y-3">
+            <h4 className="text-sm font-black text-mn-h1 flex items-center gap-2">
+              <GitMerge className="w-4 h-4 text-mn-warning" />
+              Merge Duplicate Lead
+            </h4>
+            <p className="text-xs text-mn-text-muted">
+              Keep this lead as the primary record. Activity, site visits, callbacks, tagged properties, and missing contact details from the duplicate will be merged here.
+            </p>
+            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+              <Select
+                label="Duplicate Lead"
+                value={mergeTargetId}
+                onChange={e => setMergeTargetId(e.target.value)}
+                placeholder="Select duplicate to merge"
+                options={mergeCandidates.map(candidate => ({
+                  value: candidate.lead.id,
+                  label: `${candidate.lead.raw_data?.lead_name || 'Unnamed'} — ${candidate.reasons.join(', ')}`,
+                }))}
+              />
+              <Button
+                variant="secondary"
+                icon={<GitMerge className="w-4 h-4" />}
+                disabled={mergingLead || !mergeTargetId}
+                onClick={handleMergeLead}
+              >
+                {mergingLead ? 'Merging...' : 'Merge Into This Lead'}
+              </Button>
+            </div>
+            {selectedMergeCandidate && (
+              <div className="rounded-lg border border-mn-warning/25 bg-mn-warning/10 p-3 text-xs text-mn-text-muted">
+                <span className="font-bold text-mn-text">{selectedMergeCandidate.lead.raw_data?.lead_name}</span>
+                {' '}will be archived after its history is copied into this lead.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Delete confirmation */}
         {confirmDelete && (
           <div className="p-4 bg-red-950/30 border border-mn-danger/30 rounded-xl space-y-3">
             <p className="text-sm text-mn-text font-bold">
-              Are you sure you want to permanently delete lead &quot;{raw.lead_name}&quot;?
+              Are you sure you want to archive lead &quot;{raw.lead_name}&quot;?
             </p>
-            <p className="text-xs text-mn-text-muted">This action cannot be undone. All activity logs, site visits, and callback requests for this lead will be lost.</p>
+            <p className="text-xs text-mn-text-muted">The lead will leave active workflows, but its history stays available for audit and future analysis.</p>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={() => setConfirmDelete(false)}>Cancel</Button>
               <Button
@@ -2013,7 +3299,7 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
                 disabled={deleting}
                 onClick={handleDeleteLead}
               >
-                {deleting ? 'Deleting...' : 'Yes, Delete Lead'}
+                {deleting ? 'Archiving...' : 'Archive Lead'}
               </Button>
             </div>
           </div>
@@ -2047,14 +3333,11 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, userName = 'Admin', u
 }
 
 /* ==================== WhatsApp Helper ==================== */
-async function sendWhatsAppConfirmation(lead: Lead, visit: SiteVisit) {
+async function sendWhatsAppConfirmation(lead: Lead, visit: SiteVisit, getAuthToken?: () => Promise<string | null>) {
   try {
-    const configSnap = await getDoc(doc(db, 'crm_config', 'whatsapp'));
-    if (!configSnap.exists() || !configSnap.data().enabled) {
-      console.warn('WhatsApp not configured. Skipping notification.');
-      return;
-    }
-    const config = configSnap.data() as WhatsAppConfig;
+    const authToken = await getAuthToken?.();
+    if (!authToken) return;
+
     const visitDate = new Date(visit.scheduled_at);
 
     // Clean phone number: remove spaces, ensure country code
@@ -2062,33 +3345,24 @@ async function sendWhatsAppConfirmation(lead: Lead, visit: SiteVisit) {
     if (toPhone.startsWith('+')) toPhone = toPhone.slice(1);
     if (!toPhone.startsWith('91') && toPhone.length === 10) toPhone = '91' + toPhone;
 
-    const response = await fetch(
-      `https://graph.facebook.com/v21.0/${config.phone_number_id}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${config.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: toPhone,
-          type: 'template',
-          template: {
-            name: config.template_site_visit_confirmation,
-            language: { code: 'en' },
-            components: [{
-              type: 'body',
-              parameters: [
-                { type: 'text', text: lead.raw_data.lead_name },
-                { type: 'text', text: visitDate.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) },
-                { type: 'text', text: visit.location },
-              ],
-            }],
-          },
-        }),
-      }
-    );
+    const response = await fetch('/api/whatsapp/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        to: toPhone,
+        type: 'template',
+        leadId: lead.id,
+        templateName: 'site_visit_confirmation',
+        parameters: [
+          lead.raw_data.lead_name,
+          visitDate.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+          visit.location,
+        ],
+      }),
+    });
 
     if (response.ok) {
       // Log WhatsApp sent + update reminder flag
@@ -2110,7 +3384,8 @@ async function sendWhatsAppConfirmation(lead: Lead, visit: SiteVisit) {
       const allVisits = updatedVisits.length > 0 ? updatedVisits : [{ ...visit, reminder_on_agreement: true }];
       await updateDoc(doc(db, 'leads', lead.id), { site_visits: allVisits });
     } else {
-      console.error('WhatsApp API error:', await response.text());
+      const data = await response.json().catch(() => null);
+      console.error('WhatsApp API error:', data?.error || response.statusText);
     }
   } catch (err) {
     console.error('WhatsApp send failed:', err);

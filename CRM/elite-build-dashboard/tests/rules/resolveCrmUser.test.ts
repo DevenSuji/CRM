@@ -10,10 +10,10 @@ beforeAll(async () => { env = await createEnv(); });
 afterAll(async () => { await env.cleanup(); });
 beforeEach(async () => { await env.clearFirestore(); });
 
-/** Runs the resolver with rules DISABLED — resolveCrmUser is a privileged
- *  server-context function (it runs in the browser today but performs writes
- *  that rules allow via the self-update + _user_count-create carve-outs).
- *  Testing with rules disabled isolates its logic from the rules suite. */
+/** Runs the legacy resolver with rules disabled.
+ *  Runtime login now uses the Admin SDK route, so bootstrap/pending migration
+ *  writes are server-owned and Firestore rules intentionally block browser
+ *  clients from performing those writes directly. */
 async function withResolverDb<T>(fn: (db: Firestore) => Promise<T>): Promise<T> {
   let result: T;
   await env.withSecurityRulesDisabled(async (ctx) => {
@@ -149,6 +149,37 @@ describe('resolveCrmUser — pending-doc migration', () => {
       const res = await resolveCrmUser(fakeUser({ uid: 'norole_uid', email }), db);
       expect(res.kind).toBe('ok');
       if (res.kind === 'ok') expect(res.user.role).toBe('sales_exec');
+    });
+  });
+
+  it('migrates a mixed-case pending doc id by matching the normalized email', async () => {
+    await withResolverDb(async (db) => {
+      const { doc, setDoc, getDoc } = await import('firebase/firestore');
+      await setDoc(doc(db, 'crm_config', '_user_count'), { count: 1 });
+      const email = 'elitebuildinfratech@gmail.com';
+      const legacyPendingId = 'pending_EliteBuildInfraTech_gmail_com';
+      await setDoc(doc(db, 'users', legacyPendingId), {
+        email,
+        name: 'EliteBuild',
+        role: 'admin',
+        active: true,
+        pending_registration: true,
+        created_at: null,
+      });
+
+      const res = await resolveCrmUser(fakeUser({ uid: 'elitebuild_uid', email }), db);
+      expect(res.kind).toBe('ok');
+      if (res.kind === 'ok') {
+        expect(res.user.uid).toBe('elitebuild_uid');
+        expect(res.user.email).toBe(email);
+        expect(res.user.role).toBe('admin');
+      }
+
+      const real = await getDoc(doc(db, 'users', 'elitebuild_uid'));
+      expect(real.exists()).toBe(true);
+      expect(real.data()?.email).toBe(email);
+      const pending = await getDoc(doc(db, 'users', legacyPendingId));
+      expect(pending.exists()).toBe(false);
     });
   });
 });

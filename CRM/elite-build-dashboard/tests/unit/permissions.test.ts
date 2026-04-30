@@ -16,16 +16,19 @@ const ALL_ROLES: UserRole[] = [
 
 const ALL_CAPABILITIES: Capability[] = [
   'view_dashboard',
+  'view_tasks',
   'view_all_leads',
   'view_own_leads_only',
   'create_lead',
   'bulk_upload_leads',
   'edit_lead',
   'delete_lead',
+  'view_whatsapp_inbox',
   'view_projects',
   'edit_project_core',
   'tag_project_campaigns',
   'view_admin_console',
+  'onboard_users',
   'manage_users',
   'promote_to_superadmin',
 ];
@@ -43,9 +46,9 @@ describe('can(role, capability) — permission matrix', () => {
   describe('superadmin', () => {
     const role: UserRole = 'superadmin';
     const granted: Capability[] = [
-      'view_dashboard', 'view_all_leads', 'create_lead', 'bulk_upload_leads',
-      'edit_lead', 'delete_lead', 'view_projects', 'edit_project_core',
-      'tag_project_campaigns', 'view_admin_console', 'manage_users',
+      'view_dashboard', 'view_tasks', 'view_all_leads', 'create_lead', 'bulk_upload_leads',
+      'edit_lead', 'delete_lead', 'view_whatsapp_inbox', 'view_projects', 'edit_project_core',
+      'tag_project_campaigns', 'view_admin_console', 'onboard_users', 'manage_users',
       'promote_to_superadmin',
     ];
     it.each(granted)('allows %s', (cap) => expect(can(role, cap)).toBe(true));
@@ -63,14 +66,13 @@ describe('can(role, capability) — permission matrix', () => {
       expect(can(role, 'create_lead')).toBe(true);
       expect(can(role, 'edit_lead')).toBe(true);
       expect(can(role, 'delete_lead')).toBe(true);
+      expect(can(role, 'view_whatsapp_inbox')).toBe(true);
       expect(can(role, 'edit_project_core')).toBe(true);
       expect(can(role, 'bulk_upload_leads')).toBe(true);
       expect(can(role, 'view_admin_console')).toBe(true);
     });
-    it('cannot manage_users or promote_to_superadmin — those are superadmin-only', () => {
-      // Intentional asymmetry: admins can see the admin console but user
-      // management is gated separately. See firestore.rules: only superadmin
-      // writes to /users/*. If this changes, the rules must change too.
+    it('can onboard users, but cannot manage_users or promote_to_superadmin', () => {
+      expect(can(role, 'onboard_users')).toBe(true);
       expect(can(role, 'manage_users')).toBe(false);
       expect(can(role, 'promote_to_superadmin')).toBe(false);
     });
@@ -78,12 +80,13 @@ describe('can(role, capability) — permission matrix', () => {
 
   describe('sales_exec', () => {
     const role: UserRole = 'sales_exec';
-    it('can view all leads and create/edit, but not delete or bulk upload', () => {
+    it('can access the scoped lead workspace, scoped WhatsApp inbox, and create/edit, but not delete or bulk upload', () => {
       expect(can(role, 'view_all_leads')).toBe(true);
       expect(can(role, 'create_lead')).toBe(true);
       expect(can(role, 'edit_lead')).toBe(true);
       expect(can(role, 'delete_lead')).toBe(false);
       expect(can(role, 'bulk_upload_leads')).toBe(false);
+      expect(can(role, 'view_whatsapp_inbox')).toBe(true);
     });
     it('cannot access admin console', () => {
       expect(can(role, 'view_admin_console')).toBe(false);
@@ -103,8 +106,11 @@ describe('can(role, capability) — permission matrix', () => {
       expect(can(role, 'bulk_upload_leads')).toBe(false);
       expect(can(role, 'delete_lead')).toBe(false);
     });
-    it('has no project or admin access', () => {
-      expect(can(role, 'view_projects')).toBe(false);
+    it('can access the scoped overdue task queue', () => {
+      expect(can(role, 'view_tasks')).toBe(true);
+    });
+    it('can view assigned projects, but has no project edit or admin access', () => {
+      expect(can(role, 'view_projects')).toBe(true);
       expect(can(role, 'edit_project_core')).toBe(false);
       expect(can(role, 'view_admin_console')).toBe(false);
     });
@@ -161,6 +167,27 @@ describe('can(role, capability) — permission matrix', () => {
       for (const r of ALL_ROLES) {
         const expected = r === 'admin' || r === 'superadmin';
         expect(can(r, 'view_admin_console')).toBe(expected);
+      }
+    });
+
+    it('admin, superadmin, and sales exec can view the WhatsApp inbox route', () => {
+      for (const r of ALL_ROLES) {
+        const expected = ['admin', 'superadmin', 'sales_exec'].includes(r);
+        expect(can(r, 'view_whatsapp_inbox')).toBe(expected);
+      }
+    });
+
+    it('only admin + superadmin can onboard users', () => {
+      for (const r of ALL_ROLES) {
+        const expected = r === 'admin' || r === 'superadmin';
+        expect(can(r, 'onboard_users')).toBe(expected);
+      }
+    });
+
+    it('overdue tasks are visible only to operational owner roles', () => {
+      for (const r of ALL_ROLES) {
+        const expected = ['superadmin', 'admin', 'sales_exec', 'channel_partner'].includes(r);
+        expect(can(r, 'view_tasks')).toBe(expected);
       }
     });
 

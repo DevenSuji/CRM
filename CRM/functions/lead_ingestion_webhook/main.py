@@ -83,6 +83,31 @@ def _validate_budget(budget):
         return 0
 
 
+def _normalize_lead_source(source):
+    """Return a canonical reporting source while preserving the original source."""
+    cleaned = _sanitize_string(source or "", 100)
+    normalized = re.sub(r'[_-]+', ' ', cleaned).strip()
+    normalized = re.sub(r'\s+', ' ', normalized)
+    if not normalized:
+        return "Unknown"
+
+    lower = normalized.lower()
+    patterns = [
+        ("Meta Ads", [r"\bmeta\b", r"\bfacebook\b", r"\bfb\b", r"\binstagram\b", r"\big\b"]),
+        ("Google Ads", [r"\bgoogle\b", r"\bgads\b", r"\badwords\b"]),
+        ("Website", [r"\bwebsite\b", r"\bweb\s*site\b", r"\blanding\s*page\b"]),
+        ("Channel Partner", [r"\bchannel\s*partner\b", r"\bcp\b", r"\bbroker\b"]),
+        ("Walk-in", [r"\bwalk[\s-]*in\b", r"\bsite\s*walk[\s-]*in\b"]),
+        ("CSV Import", [r"\bcsv\b", r"\bimport\b"]),
+        ("WhatsApp", [r"\bwhatsapp\b", r"\bwa\b"]),
+        ("Organic", [r"\borganic\b", r"\breferral\b", r"\bword\s*of\s*mouth\b"]),
+    ]
+    for label, regexes in patterns:
+        if any(re.search(pattern, lower, re.IGNORECASE) for pattern in regexes):
+            return label
+    return normalized
+
+
 def _cors_headers(origin="*"):
     """Return CORS headers, restricted to allowed origins."""
     if ALLOWED_ORIGINS == ["*"]:
@@ -142,6 +167,7 @@ def ingest_universal_lead(request):
         data.get("email") or data.get("email_address") or "N/A"
     )
     source = _sanitize_string(data.get("source") or "Website", 100)
+    source_normalized = _normalize_lead_source(source)
     budget = _validate_budget(data.get("budget", 0))
 
     # --- PROJECT ATTRIBUTION FROM ADS ---
@@ -163,6 +189,7 @@ def ingest_universal_lead(request):
         "status": "New",
         "created_at": firestore.SERVER_TIMESTAMP,
         "source": source,
+        "source_normalized": source_normalized,
         "raw_data": {
             "lead_name": lead_name,
             "phone": phone,
@@ -219,7 +246,7 @@ def ingest_universal_lead(request):
 
     try:
         doc_ref = db.collection("leads").add(lead_payload)
-        print(f"LEAD_INGESTED: {doc_ref[1].id} source={source} project={project_id}")
+        print(f"LEAD_INGESTED: {doc_ref[1].id} source={source} normalized={source_normalized} project={project_id}")
         return (
             json.dumps({
                 "success": True,

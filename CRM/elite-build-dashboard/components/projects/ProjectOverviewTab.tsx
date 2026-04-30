@@ -2,10 +2,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
-import { Pencil, Save, MapPin, Building2, X, Images } from 'lucide-react';
+import { Pencil, Save, MapPin, X, Images, UsersRound, Check } from 'lucide-react';
 import { useFirestoreDoc } from '@/lib/hooks/useFirestoreDoc';
 import { useToast } from '@/lib/hooks/useToast';
 import { Project, SchemaField, PropertyType, ProjectStatus, PROPERTY_TYPES, PROJECT_STATUSES, DEFAULT_SCHEMA_FIELDS } from '@/lib/types/project';
+import type { CRMUser } from '@/lib/types/user';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -20,6 +21,8 @@ import { buildBestBuyerCallListCsv, ReverseMatchProjectSnapshot } from '@/lib/ut
 interface ProjectOverviewTabProps {
   project: Project;
   isAdmin: boolean;
+  channelPartners?: Array<CRMUser & { id?: string }>;
+  showBestBuyers?: boolean;
 }
 
 const STATUS_BADGE: Record<string, 'success' | 'warning' | 'danger'> = {
@@ -28,11 +31,16 @@ const STATUS_BADGE: Record<string, 'success' | 'warning' | 'danger'> = {
   'Sold Out': 'danger',
 };
 
-export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps) {
+export function ProjectOverviewTab({
+  project,
+  isAdmin,
+  channelPartners = [],
+  showBestBuyers = false,
+}: ProjectOverviewTabProps) {
   const { showToast } = useToast();
   const { data: reverseSnapshot } = useFirestoreDoc<ReverseMatchProjectSnapshot & { id: string }>(
     'reverse_match_projects',
-    project.id,
+    showBestBuyers ? project.id : '',
   );
 
   // Edit mode for project info
@@ -49,6 +57,8 @@ export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps
   const [editingFields, setEditingFields] = useState(false);
   const [projectFields, setProjectFields] = useState<Record<string, any>>(project.project_fields || {});
   const [savingFields, setSavingFields] = useState(false);
+  const [assignedPartnerUids, setAssignedPartnerUids] = useState<string[]>(project.channel_partner_uids || []);
+  const [savingAccess, setSavingAccess] = useState(false);
 
   // Image lightbox
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -83,6 +93,7 @@ export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps
     if (project.gallery) imgs.push(...project.gallery);
     setFormImages(imgs);
     setProjectFields(project.project_fields || {});
+    setAssignedPartnerUids(project.channel_partner_uids || []);
   }, [project]);
 
   // Load schema
@@ -109,7 +120,32 @@ export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps
     () => schema.filter(f => f.scope === 'project'),
     [schema],
   );
-  const bestBuyers = reverseSnapshot?.buyers || [];
+  const bestBuyers = showBestBuyers ? reverseSnapshot?.buyers || [] : [];
+  const assignableChannelPartners = useMemo(() => {
+    const seen = new Set<string>();
+    return channelPartners
+      .map(partner => {
+        const uid = typeof partner.uid === 'string' && partner.uid.trim()
+          ? partner.uid.trim()
+          : typeof partner.id === 'string' && partner.id.trim()
+            ? partner.id.trim()
+            : '';
+        return { ...partner, uid };
+      })
+      .filter(partner => {
+        if (!partner.uid || partner.uid.startsWith('pending_') || seen.has(partner.uid)) {
+          return false;
+        }
+        seen.add(partner.uid);
+        return true;
+      })
+      .sort((a, b) => (a.name || a.email || a.uid).localeCompare(b.name || b.email || b.uid));
+  }, [channelPartners]);
+  const accessChanged = useMemo(() => {
+    const current = new Set(project.channel_partner_uids || []);
+    if (current.size !== assignedPartnerUids.length) return true;
+    return assignedPartnerUids.some(uid => !current.has(uid));
+  }, [assignedPartnerUids, project.channel_partner_uids]);
 
   const handleExportCallList = () => {
     if (bestBuyers.length === 0) {
@@ -182,6 +218,31 @@ export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps
     }
   };
 
+  const toggleChannelPartner = (uid: string) => {
+    setAssignedPartnerUids(prev =>
+      prev.includes(uid)
+        ? prev.filter(item => item !== uid)
+        : [...prev, uid]
+    );
+  };
+
+  const handleSaveChannelPartnerAccess = async () => {
+    if (!isAdmin) return;
+    setSavingAccess(true);
+    try {
+      await updateDoc(doc(db, 'projects', project.id), {
+        channel_partner_uids: assignedPartnerUids,
+        updated_at: Timestamp.now(),
+      });
+      showToast('success', 'Channel Partner project access updated.');
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Failed to update Channel Partner access.');
+    } finally {
+      setSavingAccess(false);
+    }
+  };
+
   const renderFieldValue = (field: SchemaField, value: any) => {
     if (value === null || value === undefined || value === '') return <span className="text-mn-text-muted/40">{'\u2014'}</span>;
     if (field.type === 'boolean') return <span className={value === true ? 'text-mn-success' : 'text-mn-danger'}>{value === true ? 'Yes' : 'No'}</span>;
@@ -210,7 +271,7 @@ export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps
                 onClick={() => onChange(opt === 'Yes')}
                 className={`px-4 py-2 rounded-lg text-xs font-bold border transition-all ${
                   (opt === 'Yes' ? value === true : value === false)
-                    ? 'bg-mn-h2 text-white border-mn-h2'
+                    ? 'bg-mn-brand text-mn-brand-contrast border-mn-brand'
                     : 'bg-mn-input-bg text-mn-text-muted border-mn-input-border hover:border-mn-border'
                 }`}
               >
@@ -332,13 +393,78 @@ export function ProjectOverviewTab({ project, isAdmin }: ProjectOverviewTabProps
         </div>
       )}
 
-      <BestBuyersPanel
-        title="Best Buyers"
-        subtitle={`Server-ranked buyers for ${project.name}, using match fit, urgency, recency, engagement, and sales stage.`}
-        buyers={bestBuyers}
-        emptyText={(reverseSnapshot?.inventoryCount || 0) === 0 ? 'No available inventory in this project yet, so reverse matching has nothing to rank.' : 'No active leads currently fit this project strongly enough to show as best buyers.'}
-        onExport={handleExportCallList}
-      />
+      {isAdmin && (
+        <div className="app-shell-panel rounded-[1.5rem] p-6">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <p className="section-heading">Access</p>
+              <h3 className="mt-2 flex items-center gap-2 text-sm font-black uppercase tracking-wider text-mn-h3">
+                <UsersRound className="h-4 w-4" />
+                Channel Partner Access
+              </h3>
+              <p className="mt-1 text-[10px] text-mn-text-muted">
+                Selected partners can view this project and its units.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              onClick={handleSaveChannelPartnerAccess}
+              disabled={!accessChanged || savingAccess}
+              icon={<Save className="w-4 h-4" />}
+            >
+              {savingAccess ? 'Saving...' : 'Save Access'}
+            </Button>
+          </div>
+
+          {assignableChannelPartners.length === 0 ? (
+            <p className="rounded-xl border border-mn-border/30 bg-mn-surface/60 px-4 py-3 text-xs font-medium text-mn-text-muted">
+              No active Channel Partners are available yet.
+            </p>
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2">
+              {assignableChannelPartners.map(partner => {
+                const checked = assignedPartnerUids.includes(partner.uid);
+                return (
+                  <label
+                    key={partner.uid}
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition-colors ${
+                      checked
+                        ? 'border-mn-h2/40 bg-mn-h2/8'
+                        : 'border-mn-border/30 bg-mn-card hover:border-mn-border'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={checked}
+                      onChange={() => toggleChannelPartner(partner.uid)}
+                    />
+                    <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border ${
+                      checked ? 'border-mn-brand bg-mn-brand text-mn-brand-contrast' : 'border-mn-border bg-mn-input-bg'
+                    }`}>
+                      {checked && <Check className="h-3.5 w-3.5" />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold text-mn-text">{partner.name || partner.email}</span>
+                      <span className="block truncate text-[10px] text-mn-text-muted">{partner.email}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showBestBuyers && (
+        <BestBuyersPanel
+          title="Best Buyers"
+          subtitle={`Server-ranked buyers for ${project.name}, using match fit, urgency, recency, engagement, and sales stage.`}
+          buyers={bestBuyers}
+          emptyText={(reverseSnapshot?.inventoryCount || 0) === 0 ? 'No available inventory in this project yet, so reverse matching has nothing to rank.' : 'No active leads currently fit this project strongly enough to show as best buyers.'}
+          onExport={handleExportCallList}
+        />
+      )}
 
       {/* Project-Level Fields Section */}
       {!schemaLoading && projectScopedFields.length > 0 && (

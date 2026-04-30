@@ -196,10 +196,11 @@ describe('normalizeLead — source defaults', () => {
 
   it('uses explicit source when present in row', () => {
     const lead = normalizeLead(
-      { lead_name: 'A', source: 'Meta Ads' },
+      { lead_name: 'A', source: 'FB Lead' },
       { role: 'channel_partner' },
     );
-    expect(lead.source).toBe('Meta Ads');
+    expect(lead.source).toBe('FB Lead');
+    expect(lead.source_normalized).toBe('Meta Ads');
   });
 
   it('defaults to "CSV Import" when no role given', () => {
@@ -224,6 +225,22 @@ describe('normalizeLead — owner_uid stamping', () => {
   it('stamps null when uid is explicitly null', () => {
     const lead = normalizeLead({ lead_name: 'A' }, { uid: null });
     expect(lead.owner_uid).toBeNull();
+  });
+});
+
+describe('normalizeLead — duplicate keys', () => {
+  it('stores normalized duplicate keys for imported leads', () => {
+    const lead = normalizeLead({
+      lead_name: 'Alice Buyer',
+      phone: '+91 98765 43210',
+      email: 'ALICE@example.com',
+    });
+
+    expect(lead.duplicate_keys).toEqual({
+      phones: ['9876543210'],
+      email: 'alice@example.com',
+      name: 'alice buyer',
+    });
   });
 });
 

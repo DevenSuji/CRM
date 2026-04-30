@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Elite Build CRM - Full Logic Mind Map</title>
+  <style>
+    :root {
+      --ink: #1f2937;
+      --muted: #5f6b7a;
+      --paper: #eaf8ff;
+      --grid: rgba(56, 189, 248, 0.14);
+      --grid-strong: rgba(56, 189, 248, 0.22);
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+        linear-gradient(var(--grid-strong) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-strong) 1px, transparent 1px),
+        var(--paper);
+      background-size: 48px 48px, 48px 48px, 240px 240px, 240px 240px;
+    }
+
+    .toolbar {
+      position: fixed;
+      z-index: 20;
+      top: 18px;
+      left: 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 16px;
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
+      backdrop-filter: blur(12px);
+    }
+
+    .logo {
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+    }
+
+    .toolbar small {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .canvas {
+      width: 12200px;
+      height: 17800px;
+      position: relative;
+    }
+
+    svg {
+      display: block;
+      width: 12200px;
+      height: 17800px;
+    }
+
+    .node {
+      box-sizing: border-box;
+      width: 100%;
+      height: 100%;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.94);
+      border: 2px solid rgba(30, 41, 59, 0.14);
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
+      padding: 18px 22px;
+      overflow: hidden;
+    }
+
+    .central {
+      border-width: 5px;
+      border-color: #7c3aed;
+      text-align: center;
+      padding: 26px 34px;
+      box-shadow: 0 0 0 8px rgba(124, 58, 237, 0.08), 0 24px 70px rgba(15, 23, 42, 0.16);
+    }
+
+    .central h1 {
+      margin: 0 0 10px;
+      font-size: 34px;
+      line-height: 1;
+      letter-spacing: -0.05em;
+    }
+
+    .central p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .branch {
+      border-width: 4px;
+      color: #111827;
+    }
+
+    .branch h2 {
+      margin: 0;
+      font-size: 21px;
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+    }
+
+    .branch p,
+    .group p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.35;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .group {
+      border-width: 3px;
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .group h3 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    .leaf {
+      border-radius: 18px;
+      padding: 16px 18px;
+      background: rgba(255, 255, 255, 0.96);
+    }
+
+    .leaf .file {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 950;
+      line-height: 1.2;
+      color: #111827;
+      letter-spacing: -0.01em;
+    }
+
+    .leaf .body {
+      margin: 0;
+      color: #334155;
+      font-size: 12.5px;
+      font-weight: 650;
+      line-height: 1.42;
+    }
+
+    .leaf .body strong {
+      color: #0f172a;
+      font-weight: 950;
+    }
+
+    .caption {
+      position: absolute;
+      left: 5030px;
+      top: 8920px;
+      width: 2140px;
+      padding: 20px 26px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(15, 23, 42, 0.14);
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+      font-weight: 750;
+      line-height: 1.5;
+      color: #334155;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="logo">miro-style CRM map</div>
+    <small>Elite Build CRM full logic map - A0 scale - scroll or zoom browser</small>
+  </div>
+  <div class="canvas">
+    <svg id="map" viewBox="0 0 12200 17800" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="caption">
+      This mind map is intentionally oversized. Each leaf block names the script file, the CRM behavior it owns, and the implementation method. WhatsApp runtime is parked until the new number is ready, but its current foundation is still mapped because it is part of the codebase.
+    </div>
+  </div>
+
+  <script>
+    const branches = [
+      {
+        side: "right",
+        color: "#7c3aed",
+        title: "Auth, RBAC and Shell",
+        summary: "Identity, route access, role capabilities and app boot",
+        groups: [
+          {
+            title: "App boot and providers",
+            summary: "Creates the browser runtime before feature pages load",
+            leaves: [
+              ["app/layout.tsx", "Root Next.js layout.", "Loads global CSS, fonts, metadata and wraps all pages with the shared provider stack."],
+              ["components/ClientProviders.tsx", "Client-side provider bridge.", "Composes Auth, Branding, Theme and Toast providers so pages can consume current user, colors, brand and feedback state."],
+              ["app/login/page.tsx", "Google sign-in entry.", "Uses Firebase Google provider, public branding API and access-denied handling for users not registered in CRM."],
+              ["components/BrandMark.tsx", "Reusable brand identity mark.", "Renders saved logo or fallback mark consistently across login, navigation and shell."],
+              ["app/coming-soon/page.tsx", "Placeholder route.", "Provides a safe landing for roles/features that are planned but not yet active."]
+            ]
+          },
+          {
+            title: "Authentication resolution",
+            summary: "Turns Google accounts into active CRM users",
+            leaves: [
+              ["lib/context/AuthContext.tsx", "Client auth state machine.", "Listens to Firebase Auth, calls CRM user resolver, stores loading/error/user state and exposes auth token helpers."],
+              ["lib/auth/resolveCrmUser.ts", "CRM user resolver.", "Matches Firebase UID first, then pending email records, migrates pending users and blocks inactive/stale accounts."],
+              ["app/api/auth/resolve-crm-user/route.ts", "Server auth resolver endpoint.", "Verifies Firebase ID token with Admin SDK, runs resolver logic and returns sanitized CRM user data."],
+              ["lib/firebase.ts", "Browser Firebase singleton.", "Initializes client Firebase app, Firestore, Storage, Auth and Google provider from NEXT_PUBLIC env values."],
+              ["lib/firebase-admin.ts", "Server Firebase Admin singleton.", "Initializes Admin SDK once, using runtime credentials, and exports Admin Firestore/Auth for API routes."]
+            ]
+          },
+          {
+            title: "Authorization and navigation",
+            summary: "Controls who can open, see and mutate each CRM surface",
+            leaves: [
+              ["lib/utils/permissions.ts", "Role capability matrix.", "Defines Super Admin, Admin, Sales Exec, Channel Partner, Digital Marketing, Viewer and placeholder capabilities plus landing paths."],
+              ["components/AuthGuard.tsx", "Route gatekeeper.", "Maps path prefixes to required capabilities and redirects unauthenticated or unauthorized users before pages render."],
+              ["components/Sidebar.tsx", "Role-aware top navigation.", "Filters nav items by capability, remembers nav order and shows current user/theme controls."],
+              ["lib/auth/teamGuards.ts", "Team management guard helpers.", "Decides which roles Admin and Super Admin can onboard, edit, activate or remove."],
+              ["lib/api/leadAccess.ts", "Server lead access boundary.", "Mirrors lead read/mutate rules for Admin SDK routes so APIs cannot bypass role ownership logic."],
+              ["lib/utils/authHeaders.ts", "Authenticated fetch helper.", "Obtains current Firebase ID token and returns Authorization headers for protected API calls."]
+            ]
+          }
+        ]
+      },
+      {
+        side: "left",
+        color: "#ec4899",
+        title: "Leads and Sales Workflow",
+        summary: "Kanban, manual lead flow, assignment, quality and stage movement",
+        groups: [
+          {
+            title: "Lead page and board",
+            summary: "Main sales operating room",
+            leaves: [
+              ["app/page.tsx", "Leads page and lead detail modal.", "Subscribes to role-scoped Firestore queries, renders Kanban lanes, create/import flows, lead detail tabs, assignment, site visits and WhatsApp sends."],
+              ["components/KanbanBoard.tsx", "Board shell.", "Receives grouped leads and drag callbacks, then lays out lanes with stable board dimensions."],
+              ["components/KanbanLane.tsx", "Single stage lane.", "Displays leads for a status, supports drag/drop and keeps lane counts/colors aligned with CRM config."],
+              ["components/KanbanCard.tsx", "Compact lead card.", "Shows buyer summary, AI score pill, color tagging, assignment, budget, matched-property signal and quick scan metadata."],
+              ["components/CallbackAlarmOverlay.tsx", "Due callback alert.", "Finds callback activity due for the current user and overlays reminders with open-lead actions."],
+              ["components/LeadDetailPopover.tsx", "Small lead detail preview.", "Shows key lead information in lightweight popover contexts."]
+            ]
+          },
+          {
+            title: "Lead creation, import and assignment",
+            summary: "How leads enter and get assigned",
+            leaves: [
+              ["app/page.tsx:AddLeadModal", "Manual lead creation.", "Validates buyer fields, uses Google location autocomplete, normalizes source/phones and assigns according to role and rules."],
+              ["app/page.tsx:ImportCSVModal", "CSV lead import.", "Parses uploaded rows, previews normalized data, checks duplicates and writes sanitized lead documents."],
+              ["lib/utils/csvImport.ts", "CSV parsing and normalization.", "Splits rows safely, maps name/phone/email/budget fields and outputs normalized lead payloads."],
+              ["lib/utils/leadAssignment.ts", "Assignment decision logic.", "Chooses assignee based on source, role, admin settings and round-robin/owned lead rules."],
+              ["app/api/lead-assignment/next/route.ts", "Server assignment endpoint.", "Validates user, reads lead assignment config and returns the next safe assignee for new leads."],
+              ["lib/utils/leadVisibility.ts", "Lead list privacy filter.", "Ensures Sales Execs see own plus unassigned non-Channel-Partner leads, partners see own leads and leaders see broader scope."]
+            ]
+          },
+          {
+            title: "Lead hygiene and governance",
+            summary: "Keeps future data inference clean",
+            leaves: [
+              ["lib/utils/leadDataQuality.ts", "Data quality detector.", "Flags missing assignee, contact, budget, interest, stage reasons and governance notes; also exports cleanup CSV."],
+              ["lib/utils/leadDuplicates.ts", "Duplicate detection.", "Normalizes phone/email/name keys and compares new or imported leads against existing records."],
+              ["lib/utils/leadMerge.ts", "Duplicate merge policy.", "Combines primary and duplicate records while preserving activity, visits, callbacks, tagged properties and missing contact data."],
+              ["lib/utils/leadSourceHygiene.ts", "Source normalization.", "Maps messy source names into durable reporting buckets such as Google Ads, Channel Partner and Manual."],
+              ["lib/utils/smartLeadSearch.ts", "Search ranking.", "Matches leads by name, phone, status, location, source and intent so list search stays useful at scale."],
+              ["CRM/functions/lead_cleanup/cleanup_lead.py", "Dangerous cleanup utility.", "Deletes lead-like data when explicitly run for cleanup; kept separate from app runtime."]
+            ]
+          },
+          {
+            title: "Stage movement, SLA and tasks",
+            summary: "Operational discipline after the lead exists",
+            leaves: [
+              ["lib/utils/kanbanLanes.ts", "Lane configuration helpers.", "Injects Property Matched lane, backfills emojis and computes drag decisions for status changes."],
+              ["lib/utils/kanbanStageMoves.ts", "Stage governance notes.", "Requires rejection, closure and booking-cancellation reasons and builds readable activity log entries."],
+              ["lib/utils/leadSla.ts", "Lead SLA state.", "Computes first-contact and latest-touch timings, severity and alerts from SLA config and lead activity."],
+              ["lib/utils/leadTasks.ts", "Derived task generator.", "Creates overdue callbacks, untouched lead tasks, property-detail follow-ups, no-response tasks and site-visit tasks from lead activity."],
+              ["lib/utils/taskVisibility.ts", "Role task scoping.", "Limits overdue tasks by role: Sales Exec own, Admin all except Super Admin, Super Admin all, Channel Partner own, Viewer/Marketing none."],
+              ["app/tasks/page.tsx", "Overdue Tasks page.", "Subscribes to role-allowed leads, computes due work and renders the Daily Briefing plus task action surface."]
+            ]
+          },
+          {
+            title: "Lead lifecycle server routes",
+            summary: "High-risk mutations behind Admin SDK checks",
+            leaves: [
+              ["app/api/leads/booking/route.ts", "Booking and unbooking route.", "Uses transactions and audit logs to move inventory/lead booking states without trusting browser-only writes."],
+              ["app/api/leads/lifecycle/route.ts", "Archive, restore, merge and delete lifecycle.", "Validates Admin/SuperAdmin access, prevents unsafe destructive operations and writes audit trails."],
+              ["lib/api/auditLog.ts", "Audit log writer.", "Compacts metadata and writes actor, action, target and summary into audit_logs for traceability."]
+            ]
+          }
+        ]
+      },
+      {
+        side: "right",
+        color: "#06b6d4",
+        title: "Projects, Inventory and Units",
+        summary: "Project catalog, unit supply and channel-partner boundaries",
+        groups: [
+          {
+            title: "Projects page",
+            summary: "Inventory-ready project management",
+            leaves: [
+              ["app/projects/page.tsx", "Unified Projects page.", "Loads projects, units, schemas, users and reverse-match snapshots; filters by role and selected project."],
+              ["components/projects/ProjectSidebar.tsx", "Project list/sidebar.", "Displays searchable project cards, status, inventory counts and selected project state."],
+              ["components/projects/ProjectOverviewTab.tsx", "Project profile and partner access.", "Edits project core fields, images, channel partner assignments and overview intelligence."],
+              ["components/projects/ProjectUnitsTab.tsx", "Inventory unit manager.", "Creates/edits units, price, status, BHK/variant and booking availability inside each project."],
+              ["components/projects/ProjectSchemaTab.tsx", "Dynamic project schema editor.", "Controls project-specific fields so different property types can capture different metadata."],
+              ["components/projects/ProjectCampaignsTab.tsx", "Project campaign tab.", "Holds campaign-facing project data and marketing context for later growth workflows."]
+            ]
+          },
+          {
+            title: "Project helpers and media",
+            summary: "Search, locations, images and buyer panels",
+            leaves: [
+              ["components/projects/BestBuyersPanel.tsx", "Reverse buyer panel.", "Shows best matching leads for a project/unit using reverse-match snapshots and exportable call lists."],
+              ["components/ProjectLocationSearch.tsx", "Project Google Places search.", "Searches places, resolves coordinates and fills project location data."],
+              ["components/PropertySearch.tsx", "Lead-side property tag search.", "Lets users tag eligible projects to a lead while avoiding already-tagged projects."],
+              ["components/PropertyTooltip.tsx", "Project hover preview.", "Caches project data and shows quick property details near the card or tag."],
+              ["components/ui/ImageUpload.tsx", "Single image uploader.", "Uploads image files to Firebase Storage, validates file constraints and returns public URLs."],
+              ["components/ui/MultiImageUpload.tsx", "Gallery image uploader.", "Supports multiple project images, reordering and max-count/file-size validation."]
+            ]
+          },
+          {
+            title: "Project and inventory data logic",
+            summary: "Typed supply and cleanup",
+            leaves: [
+              ["lib/types/project.ts", "Project and schema types.", "Defines project, project fields, channel partner assignment and schema structures used by UI and rules."],
+              ["lib/types/inventory.ts", "Inventory unit types.", "Defines unit pricing, availability, booking state, BHK, variant and project relationship fields."],
+              ["CRM/functions/inventory_cleanup/cleanup_inventory.py", "Inventory cleanup utility.", "Bulk-cleans inventory data when explicitly run outside the app flow."],
+              ["components/ui/ImageLightbox.tsx", "Image viewer.", "Displays project or unit gallery images in a focused overlay without changing data."],
+              ["components/ui/LocationAutocomplete.tsx", "Shared location autocomplete.", "Loads Google Places script and returns selected place details for leads/projects."]
+            ]
+          }
+        ]
+      },
+      {
+        side: "left",
+        color: "#14b8a6",
+        title: "Property Matching Intelligence",
+        summary: "Buyer-to-inventory matching, reverse matching and no-match insights",
+        groups: [
+          {
+            title: "Client-side matching helpers",
+            summary: "Same scoring ideas used for UI diagnosis",
+            leaves: [
+              ["lib/utils/propertyMatcher.ts", "Lead to inventory matcher.", "Resolves interests/BHK, scores price fit, distance and unit count, returns match score, reasons and diagnostics."],
+              ["lib/utils/reverseMatcher.ts", "Inventory to buyer matcher.", "Ranks best buyers for project/unit using lead status, urgency, recency, engagement and match score."],
+              ["lib/hooks/usePropertyMatching.ts", "Realtime property matching hook.", "Combines leads, inventory and project data to expose matches in React screens."],
+              ["components/MatchThresholdSlider.tsx", "Match threshold control.", "Writes global property-match threshold to CRM config for Admin/SuperAdmin tuning."]
+            ]
+          },
+          {
+            title: "Cloud matching engine",
+            summary: "Firestore-triggered automation",
+            leaves: [
+              ["CRM/functions/match_lead/main.py", "Main matching Cloud Function.", "On lead/inventory/project/config changes, computes matches, writes interested_properties, match scores, reverse snapshots and no-match intelligence."],
+              ["CRM/functions/match_lead/check_inventory.py", "Inventory check helper.", "Inspects inventory documents for matching/debug work outside the web app."],
+              ["CRM/functions/on_lead_match_update/main.py", "Auto WhatsApp on match update.", "Detects new system matches, locks per lead, sends configured WhatsApp template and avoids duplicate sends by fingerprint."],
+              ["lib/types/intelligence.ts", "Intelligence result types.", "Defines lead intelligence, scoring and recommendation shapes shared by dashboard and lead cards."],
+              ["lib/utils/leadIntelligence.ts", "Lead score and next signal logic.", "Computes AI-like score, stage signal, blockers and compact guidance from lead fields and activity."]
+            ]
+          },
+          {
+            title: "Demand and no-match inference",
+            summary: "Turns missing matches into business insight",
+            leaves: [
+              ["lib/utils/inventoryIntelligence.ts", "Inventory intelligence calculator.", "Compares available supply with buyer demand, stale units, budget/location bands and recommends marketing or supply action."],
+              ["components/dashboard/InventoryIntelligencePanel.tsx", "Inventory intelligence UI.", "Displays supply-demand opportunities, gaps and recommendations while respecting dashboard role scope."],
+              ["docs/AI_Property_Match.md", "Matching design documentation.", "Explains the matching model and business meaning behind lead/property scoring."],
+              ["docs/PropertyMatchingExplained.md", "User-facing matching explanation.", "Documents how property matching works for future onboarding and QA."]
+            ]
+          }
+        ]
+      },
+      {
+        side: "right",
+        color: "#f59e0b",
+        title: "Dashboards and Executive Views",
+        summary: "C-Suite stats, stunning graphs and role-scoped performance",
+        groups: [
+          {
+            title: "Dashboard routes and role views",
+            summary: "What each role sees",
+            leaves: [
+              ["app/dashboard/page.tsx", "Dashboard route.", "Loads leads, users, inventory and marketing teams, then selects Internal, Marketing or Channel Partner dashboard by role."],
+              ["components/dashboard/InternalDashboard.tsx", "Leadership and Sales Exec dashboard.", "Shows C-Suite stats for leaders and personal pipeline for Sales Execs, with team filters hidden when not allowed."],
+              ["components/dashboard/MarketingDashboard.tsx", "Marketing dashboard.", "Admin/SuperAdmin-only view of campaign/source performance, conversion and lead quality."],
+              ["components/dashboard/ChannelPartnerDashboard.tsx", "Channel Partner dashboard.", "Displays partner-only lead stats without exposing internal team or unrelated project data."]
+            ]
+          },
+          {
+            title: "Charts, cards and panels",
+            summary: "Visual reporting components",
+            leaves: [
+              ["components/dashboard/AnimatedCharts.tsx", "Time-series chart components.", "Renders pipeline, revenue and conversion signals with animated chart primitives."],
+              ["components/dashboard/FunnelChart.tsx", "Funnel visualization.", "Displays sales stage movement and conversion shape for dashboard analysis."],
+              ["components/dashboard/MetricCard.tsx", "Reusable stat card.", "Standardizes dashboard card title, value, subtitle, icon and accent treatment."],
+              ["components/dashboard/Leaderboard.tsx", "Team leaderboard.", "Ranks team members by computed pipeline performance for Admin/SuperAdmin views."],
+              ["components/dashboard/DemandGapReport.tsx", "Demand gap panel.", "Lists demand and supply gaps from inventory intelligence output."],
+              ["components/dashboard/LeadTasksPanel.tsx", "Task panel.", "Displays generated lead tasks, filters by assignee/type and writes completion notes back to leads."]
+            ]
+          },
+          {
+            title: "Dashboard calculations",
+            summary: "Numbers behind the charts",
+            leaves: [
+              ["lib/utils/dashboardMetrics.ts", "Dashboard metrics engine.", "Computes vital stats, pipeline value, ROI, bookings, time series, marketing metrics and leaderboard entries."],
+              ["lib/utils/dailyBriefing.ts", "Daily briefing generator.", "Builds priority briefing items for new leads, hot leads, stale leads, recent matches and no-match issues."],
+              ["components/tasks/DailyBriefingPanel.tsx", "Daily briefing UI.", "Renders briefing items alongside overdue tasks so dashboard stays focused on stats and graphs."],
+              ["lib/utils/formatPrice.ts", "Indian price formatter.", "Formats numeric property values into compact INR-style labels for cards and charts."],
+              ["lib/utils/formatTimestamp.ts", "Relative time formatter.", "Converts Firestore timestamps into readable recency labels."],
+              ["lib/utils/taskVisibility.ts", "Task/dashboard task scoping.", "Ensures task counts and panels obey the same role privacy as Overdue Tasks."]
+            ]
+          }
+        ]
+      },
+      {
+        side: "left",
+        color: "#22c55e",
+        title: "Admin Console and Configuration",
+        summary: "CRM settings, team onboarding, branding and schema governance",
+        groups: [
+          {
+            title: "Admin console pages",
+            summary: "Controlled configuration surfaces",
+            leaves: [
+              ["app/admin/page.tsx", "Admin Console.", "Manages team members, branding, lead assignment, nurture/SLA config, WhatsApp templates and marketing team settings."],
+              ["app/admin/fields/page.tsx", "Field admin route.", "Provides admin-facing configuration for CRM field behavior and future field management."],
+              ["app/admin/schema/page.tsx", "Schema admin route.", "Provides schema management for dynamic project/lead configuration."],
+              ["lib/types/config.ts", "CRM configuration types.", "Defines kanban config, SLA, nurture, WhatsApp config, branding and default settings."],
+              ["lib/types/user.ts", "CRM user types.", "Defines roles, active state, pending registration and user profile fields."]
+            ]
+          },
+          {
+            title: "Branding and public config",
+            summary: "Safe public display without leaking admin config",
+            leaves: [
+              ["app/api/branding/route.ts", "Public branding endpoint.", "Reads sanitized branding config server-side so login can render logo/colors without opening Firestore config reads."],
+              ["lib/context/BrandingContext.tsx", "Branding provider.", "Fetches branding, exposes brand state and applies company name/logo/tagline to client views."],
+              ["lib/utils/branding.ts", "Branding normalization.", "Sanitizes color, text, image dimensions and default branding values before use."],
+              ["lib/context/ThemeContext.tsx", "Theme and palette provider.", "Stores dark/light and active palette preferences, applies CSS variables and coordinates visual theme."],
+              ["app/globals.css", "Global visual system.", "Defines theme tokens, contrast, typography, cards, dashboard surfaces and app-wide visual behavior."]
+            ]
+          },
+          {
+            title: "Team and config security",
+            summary: "Who can change what",
+            leaves: [
+              ["lib/auth/teamGuards.ts", "Team role edit rules.", "Prevents Admins from creating Super Admins and restricts role/status changes by actor role."],
+              ["firestore.rules", "Firestore security rules.", "Enforces client-side data boundaries for users, leads, projects, inventory, config, WhatsApp conversations and audit logs."],
+              ["firestore.indexes.json", "Firestore index manifest.", "Declares composite indexes required for scoped lead, task, project and WhatsApp queries."],
+              ["storage.rules", "Firebase Storage rules.", "Controls image upload/read boundaries for project, lead and branding assets."]
+            ]
+          }
+        ]
+      },
+      {
+        side: "right",
+        color: "#8b5cf6",
+        title: "WhatsApp and Communication",
+        summary: "Parked for new number, but foundation is mapped",
+        groups: [
+          {
+            title: "CRM-owned inbox",
+            summary: "Shared company number with role isolation",
+            leaves: [
+              ["app/whatsapp/page.tsx", "WhatsApp inbox page.", "Reads whatsapp_conversations, scopes Sales Execs to assigned conversations and allows Admin/SuperAdmin unmatched link/create workflows."],
+              ["lib/api/whatsappConversations.ts", "Conversation data model helper.", "Builds phone-based conversation IDs, service windows, lead sync and Admin SDK message upserts."],
+              ["lib/types/communication.ts", "Communication types.", "Defines WhatsApp conversation/message direction, status, type and timestamp fields."],
+              ["app/api/whatsapp/sync-lead/route.ts", "Lead to conversation sync API.", "After reassignment, validates lead read access and updates conversation assigned_to/lead metadata server-side."]
+            ]
+          },
+          {
+            title: "WhatsApp send and inbound",
+            summary: "Server-only Meta integration points",
+            leaves: [
+              ["app/api/whatsapp/send/route.ts", "Outbound send API.", "Verifies Firebase user, role and lead access, enforces phone match and 24-hour service window, calls Meta Graph and dual-writes message history."],
+              ["app/api/whatsapp/webhook/route.ts", "Meta webhook endpoint.", "Verifies GET challenge token and POST HMAC signature, parses inbound messages and writes legacy plus conversation records."],
+              ["lib/utils/whatsappWebhook.ts", "Webhook parser and signature verifier.", "Normalizes WhatsApp phone numbers, extracts message text/interactive labels and validates x-hub-signature-256."],
+              ["app/api/whatsapp/link-lead/route.ts", "Link inbound chat to existing lead.", "Admin/SuperAdmin route that attaches an unlinked WhatsApp message to a lead and syncs the conversation."],
+              ["app/api/whatsapp/create-lead/route.ts", "Create lead from WhatsApp.", "Creates a lead from inbound message phone/profile data and binds the chat to that new lead."]
+            ]
+          },
+          {
+            title: "WhatsApp automations and policy",
+            summary: "Templates, reminders and hardening",
+            leaves: [
+              ["CRM/functions/check_site_visit_reminders/main.py", "Site visit reminder function.", "Finds upcoming visits, reads WhatsApp token from Secret Manager and sends template reminders."],
+              ["CRM/functions/on_lead_match_update/main.py", "Property match WhatsApp function.", "Sends configured match templates when system matches change, guarded by lock and fingerprint."],
+              ["docs/WhatsAppHardening.md", "WhatsApp security plan.", "Documents token handling, Secret Manager, webhook signature verification, role-scoped conversations and rollout checklist."],
+              ["app/page.tsx:handleSendPropertyDetails", "Lead detail property send.", "Builds rich property text/images and calls the server WhatsApp send route with leadId for audit and inbox history."]
+            ]
+          }
+        ]
+      },
+      {
+        side: "left",
+        color: "#0ea5e9",
+        title: "Server APIs and Integrations",
+        summary: "Protected API routes and shared server utilities",
+        groups: [
+          {
+            title: "External API wrappers",
+            summary: "Server-side calls and SSRF-safe helpers",
+            leaves: [
+              ["app/api/geocode/route.ts", "Geocode API.", "Validates CRM auth, rate-limits requests and calls Google geocoding logic server-side."],
+              ["app/api/resolve-map-url/route.ts", "Map URL resolver.", "Follows only strict Google Maps hosts and returns safe resolved URLs to block spoofed hosts."],
+              ["app/api/polish-note/route.ts", "Gemini note polish API.", "Checks active CRM user, reads GEMINI_API_KEY server-side and asks Gemini to clean up user notes."],
+              ["lib/utils/googleMapsUrl.ts", "Google Maps URL safety.", "Validates allowed Google Maps hostnames and rejects lookalike/spoofed domains."],
+              ["lib/utils/geocode.ts", "Geocoding helper.", "Normalizes addresses and calls Google Maps APIs for latitude/longitude resolution."]
+            ]
+          },
+          {
+            title: "API route guardrails",
+            summary: "Reusable server protections",
+            leaves: [
+              ["lib/api/requireActiveCrmUser.ts", "API authentication guard.", "Extracts Bearer token, verifies Firebase ID token and returns active CRM user or a 401/403 response."],
+              ["lib/api/rateLimit.ts", "In-memory rate limiter.", "Buckets by route, actor and client IP to contain compromised accounts or accidental floods."],
+              ["lib/api/validation.ts", "JSON validation helpers.", "Limits request body size and validates required strings, optional strings, arrays and enums."],
+              ["lib/api/auditLog.ts", "Audit logging helper.", "Writes compact, structured mutation logs for security review and incident reconstruction."],
+              ["lib/api/leadAccess.ts", "Server lead read/mutate helper.", "Centralizes role logic for Admin SDK lead APIs so server routes match Firestore privacy."]
+            ]
+          }
+        ]
+      },
+      {
+        side: "right",
+        color: "#ef4444",
+        title: "Data Model, Rules and Governance",
+        summary: "Firestore documents, storage, types and auditability",
+        groups: [
+          {
+            title: "Core TypeScript models",
+            summary: "Shared contract across UI, APIs and tests",
+            leaves: [
+              ["lib/types/lead.ts", "Lead data contract.", "Defines raw buyer data, status, activity log, site visits, interested properties, assignment and archive fields."],
+              ["lib/types/project.ts", "Project data contract.", "Defines project metadata, schema fields, access assignments and display properties."],
+              ["lib/types/inventory.ts", "Inventory data contract.", "Defines project units, pricing, availability and booking metadata."],
+              ["lib/types/config.ts", "CRM config contract.", "Defines dashboard, Kanban, SLA, nurture, WhatsApp, branding and field-config defaults."],
+              ["lib/types/user.ts", "User/role contract.", "Defines CRM user roles, active state, identity and pending onboarding records."],
+              ["lib/types/communication.ts", "Communication contract.", "Defines WhatsApp conversation and message shapes used by server and inbox UI."]
+            ]
+          },
+          {
+            title: "Security rules and indexes",
+            summary: "Actual browser data boundary",
+            leaves: [
+              ["firestore.rules", "Firestore authorization layer.", "Uses request.auth, role docs and document fields to enforce lead, project, config, audit and WhatsApp access."],
+              ["firestore.indexes.json", "Firestore query support.", "Provides composite indexes for scoped Sales Exec leads, WhatsApp conversations and other ordered filters."],
+              ["storage.rules", "Storage authorization layer.", "Restricts Firebase Storage read/write for uploaded images and brand/project assets."],
+              ["tests/helpers/rulesEnv.ts", "Rules test bootstrap.", "Creates isolated emulator users and seeded documents for rules regression tests."]
+            ]
+          },
+          {
+            title: "Backup and recovery",
+            summary: "Production data safety",
+            leaves: [
+              ["scripts/export-firestore.mjs", "Firestore backup export script.", "Starts managed exports to GCS for backup readiness and restore rehearsal workflows."],
+              ["scripts/verify-firestore-backup.mjs", "Backup verifier.", "Checks backup metadata/state so restore readiness is not assumed blindly."],
+              ["docs/BackupRecoveryRunbook.md", "Backup runbook.", "Documents export, retention, access and restore rehearsal expectations."],
+              ["docs/StagingUATChecklist.md", "Staging UAT checklist.", "Defines role-view and restored-data checks before production release."],
+              ["docs/ProductionDeploymentCourseOfAction.md", "Deployment course of action.", "Lists remaining production steps, code-freeze conditions and operator checklist."]
+            ]
+          }
+        ]
+      },
+      {
+        side: "left",
+        color: "#6366f1",
+        title: "Shared UI System",
+        summary: "Reusable interface primitives and frontend hooks",
+        groups: [
+          {
+            title: "Core UI primitives",
+            summary: "Consistent controls across CRM",
+            leaves: [
+              ["components/ui/Button.tsx", "Button system.", "Provides primary/secondary/danger/ghost buttons with icon support, disabled contrast and shared sizing."],
+              ["components/ui/Input.tsx", "Input field.", "Wraps text inputs with consistent CRM theme classes and focus states."],
+              ["components/ui/Select.tsx", "Select control.", "Standardizes dropdown styling and disabled/read-only behavior."],
+              ["components/ui/Modal.tsx", "Modal shell.", "Provides overlay, close behavior and fixed modal layout for create/edit flows."],
+              ["components/ui/Card.tsx", "Card primitive.", "Reusable panel/card wrapper aligned with CRM spacing and surface tokens."],
+              ["components/ui/Badge.tsx", "Badge primitive.", "Displays compact labels for status, source, score and configuration flags."]
+            ]
+          },
+          {
+            title: "Feedback, date and empty states",
+            summary: "User interaction polish",
+            leaves: [
+              ["components/ui/ToastProvider.tsx", "Toast feedback system.", "Queues success/error/info messages and exposes showToast hook integration."],
+              ["lib/hooks/useToast.ts", "Toast hook.", "Reads toast context so feature components can show operation results."],
+              ["components/ui/DateTimePicker.tsx", "Date/time picker.", "Provides themed date/time selection for callbacks and site visits."],
+              ["components/ui/EmptyState.tsx", "Empty-state component.", "Shows quiet, reusable empty screens with icon, title, detail and optional action."],
+              ["components/ui/PageHeader.tsx", "Page header component.", "Standardizes page title, subtitle and action layout."]
+            ]
+          },
+          {
+            title: "Shared Firestore hooks",
+            summary: "Realtime data subscriptions",
+            leaves: [
+              ["lib/hooks/useFirestoreCollection.ts", "Collection subscription hook.", "Subscribes to Firestore collections/queries and returns typed loading/error/data states."],
+              ["lib/hooks/useFirestoreDoc.ts", "Document subscription hook.", "Subscribes to one Firestore document and handles missing/loading/error states."],
+              ["lib/utils/colorUtils.ts", "Color contrast utilities.", "Chooses readable foreground colors and supports lead-card color swatches."],
+              ["components/ui/ImageLightbox.tsx", "Lightbox component.", "Displays selected uploaded image in a focused overlay."],
+              ["components/ui/MultiImageUpload.tsx", "Multi-image manager.", "Uploads and manages galleries with count/size limits."]
+            ]
+          }
+        ]
+      },
+      {
+        side: "right",
+        color: "#10b981",
+        title: "Cloud Functions and Automation",
+        summary: "Background ingestion, matching and scheduled operations",
+        groups: [
+          {
+            title: "Lead ingestion",
+            summary: "External lead capture to Firestore",
+            leaves: [
+              ["CRM/functions/lead_ingestion_webhook/main.py", "Universal lead ingestion webhook.", "Validates webhook key, CORS, phone/email/budget, sanitizes strings, normalizes source and writes new lead records."],
+              ["CRM/functions/lead_ingestion_webhook/test_source_normalization.py", "Ingestion source tests.", "Checks source normalization behavior for external lead channels."],
+              ["docs/CP.md", "Channel Partner notes.", "Documents Channel Partner expectations and access logic used during role-view work."]
+            ]
+          },
+          {
+            title: "Automated matching triggers",
+            summary: "Keeps CRM intelligence current",
+            leaves: [
+              ["CRM/functions/match_lead/main.py", "Firestore-triggered match engine.", "Runs on lead, inventory, project and threshold changes to refresh matches and reverse-match snapshots."],
+              ["CRM/functions/on_lead_match_update/main.py", "Lead match notification trigger.", "Detects new system matches and sends WhatsApp templates via Secret Manager token with lock protection."],
+              ["CRM/functions/check_site_visit_reminders/main.py", "Scheduled reminder endpoint.", "Checks upcoming visits, authorizes caller and sends WhatsApp template reminders."],
+              ["CRM/functions/inventory_cleanup/cleanup_inventory.py", "Inventory cleanup script.", "Manual cleanup entrypoint for inventory data hygiene."],
+              ["CRM/functions/lead_cleanup/cleanup_lead.py", "Lead cleanup script.", "Manual cleanup entrypoint for lead data hygiene."]
+            ]
+          }
+        ]
+      },
+      {
+        side: "left",
+        color: "#f97316",
+        title: "Deployment, Ops and Testing",
+        summary: "How we avoid breaking login and prove privacy",
+        groups: [
+          {
+            title: "Deployment scripts",
+            summary: "Guarded Cloud Run release path",
+            leaves: [
+              ["scripts/deploy-cloud-run.mjs", "Guarded dev deployment.", "Validates public env, binds required/optional secrets, deploys no-traffic candidate, smoke-tests and promotes only after checks pass."],
+              ["package.json", "NPM command surface.", "Defines build, lint, unit tests, rules tests, backup and guarded deployment commands."],
+              [".firebaserc", "Firebase project mapping.", "Pins Firebase deploy commands to elite-build-infra-tech-dev for current dev deployment."],
+              ["next.config.ts", "Next.js config.", "Controls Next build/runtime configuration and external image/origin behavior."]
+            ]
+          },
+          {
+            title: "Rules regression tests",
+            summary: "Privacy proof before deploy",
+            leaves: [
+              ["tests/rules/leads.rules.test.ts", "Lead rules tests.", "Proves role-scoped lead reads/writes, Sales Exec claiming and Channel Partner boundaries."],
+              ["tests/rules/projects.rules.test.ts", "Project rules tests.", "Checks project/inventory access, Admin mutation and Channel Partner assigned-project visibility."],
+              ["tests/rules/users.rules.test.ts", "User rules tests.", "Validates team onboarding, user reads and role edit boundaries."],
+              ["tests/rules/crmConfig.rules.test.ts", "Config rules tests.", "Ensures only allowed roles can read/write CRM config documents."],
+              ["tests/rules/whatsappConversations.rules.test.ts", "WhatsApp conversation rules tests.", "Proves Sales Exec sees only own conversations while Admin/SuperAdmin see all."],
+              ["tests/rules/auditLogs.rules.test.ts", "Audit log rules tests.", "Ensures audit logs are not writable from browser and are visible only to privileged roles."]
+            ]
+          },
+          {
+            title: "Unit regression tests",
+            summary: "Business logic proof",
+            leaves: [
+              ["tests/unit/permissions.test.ts", "Capability matrix tests.", "Protects role permissions, landing paths and route access assumptions."],
+              ["tests/unit/leadVisibility.test.ts", "Lead visibility tests.", "Locks expected Sales Exec, Admin and Channel Partner lead list behavior."],
+              ["tests/unit/taskVisibility.test.ts", "Task visibility tests.", "Locks overdue task scoping by role and assignment."],
+              ["tests/unit/propertyMatcher.test.ts", "Property matcher tests.", "Checks buyer-to-unit scoring, reasons and thresholds."],
+              ["tests/unit/reverseMatcher.test.ts", "Reverse matcher tests.", "Checks best-buyer ranking and CSV call list output."],
+              ["tests/unit/dashboardMetrics.test.ts", "Dashboard metrics tests.", "Verifies stat, chart and leaderboard calculations."],
+              ["tests/unit/leadDataQuality.test.ts", "Data quality tests.", "Verifies governance flags and cleanup CSV output."],
+              ["tests/unit/whatsappWebhook.test.ts", "WhatsApp webhook utility tests.", "Verifies phone normalization, signature checking and inbound message extraction."]
+            ]
+          }
+        ]
+      }
+    ];
+
+    const svg = document.getElementById("map");
+    const NS = "http://www.w3.org/2000/svg";
+    const W = 12200;
+    const H = 17800;
+    const CX = W / 2;
+    const CY = H / 2;
+    const NODE = {
+      central: { w: 620, h: 150 },
+      branch: { w: 500, h: 112 },
+      group: { w: 560, h: 98 },
+      leaf: { w: 720, h: 154 }
+    };
+    const sideConfig = {
+      right: { rootX: CX + 950, groupX: CX + 1770, leafX: CX + 2780, anchor: 1 },
+      left: { rootX: CX - 950 - NODE.branch.w, groupX: CX - 1770 - NODE.group.w, leafX: CX - 2780 - NODE.leaf.w, anchor: -1 }
+    };
+    const layoutGap = { leaf: 38, group: 110, branch: 180, top: 300 };
+
+    function add(type, attrs = {}) {
+      const node = document.createElementNS(NS, type);
+      Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+      svg.appendChild(node);
+      return node;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function nodeHtml(kind, data) {
+      if (kind === "central") {
+        return `<div class="node central"><h1>Elite Build CRM</h1><p>Complete logic map: file, what it does, and how it does it</p></div>`;
+      }
+      if (kind === "branch") {
+        return `<div class="node branch" style="border-color:${data.color}"><h2>${escapeHtml(data.title)}</h2><p>${escapeHtml(data.summary)}</p></div>`;
+      }
+      if (kind === "group") {
+        return `<div class="node group" style="border-color:${data.color}"><h3>${escapeHtml(data.title)}</h3><p>${escapeHtml(data.summary)}</p></div>`;
+      }
+      return `<div class="node leaf" style="border-color:${data.color}33"><p class="file">${escapeHtml(data.file)}</p><p class="body"><strong>What:</strong> ${escapeHtml(data.what)}<br><strong>How:</strong> ${escapeHtml(data.how)}</p></div>`;
+    }
+
+    function drawNode(kind, x, y, w, h, data = {}) {
+      const fo = add("foreignObject", { x, y, width: w, height: h });
+      fo.innerHTML = nodeHtml(kind, data);
+      return { x, y, w, h, cx: x + w / 2, cy: y + h / 2 };
+    }
+
+    function connect(a, b, color, fromSide = 1, width = 7) {
+      const x1 = fromSide > 0 ? a.x + a.w : a.x;
+      const y1 = a.cy;
+      const x2 = fromSide > 0 ? b.x : b.x + b.w;
+      const y2 = b.cy;
+      const span = Math.abs(x2 - x1);
+      const curve = Math.max(220, Math.min(620, span * 0.48));
+      const c1x = x1 + curve * fromSide;
+      const c2x = x2 - curve * fromSide;
+      const path = add("path", {
+        d: `M ${x1} ${y1} C ${c1x} ${y1}, ${c2x} ${y2}, ${x2} ${y2}`,
+        fill: "none",
+        stroke: color,
+        "stroke-width": width,
+        "stroke-linecap": "round",
+        opacity: "0.88"
+      });
+      svg.insertBefore(path, svg.firstChild);
+    }
+
+    function branchHeight(branch) {
+      return branch.groups.reduce((sum, group) => {
+        const leavesHeight = group.leaves.length * NODE.leaf.h + Math.max(0, group.leaves.length - 1) * layoutGap.leaf;
+        return sum + Math.max(NODE.group.h, leavesHeight) + layoutGap.group;
+      }, 0) - layoutGap.group;
+    }
+
+    function layoutSide(side) {
+      const sideBranches = branches.filter(branch => branch.side === side);
+      const total = sideBranches.reduce((sum, branch) => sum + branchHeight(branch) + layoutGap.branch, 0) - layoutGap.branch;
+      let y = CY - total / 2;
+      for (const branch of sideBranches) {
+        const h = branchHeight(branch);
+        branch._top = y;
+        branch._height = h;
+        branch._rootY = y + h / 2 - NODE.branch.h / 2;
+        y += h + layoutGap.branch;
+      }
+    }
+
+    layoutSide("left");
+    layoutSide("right");
+
+    const central = drawNode("central", CX - NODE.central.w / 2, CY - NODE.central.h / 2, NODE.central.w, NODE.central.h);
+
+    for (const branch of branches) {
+      const cfg = sideConfig[branch.side];
+      const root = drawNode("branch", cfg.rootX, branch._rootY, NODE.branch.w, NODE.branch.h, branch);
+      connect(central, root, branch.color, cfg.anchor, 8);
+
+      let gy = branch._top;
+      for (const group of branch.groups) {
+        const leavesHeight = group.leaves.length * NODE.leaf.h + Math.max(0, group.leaves.length - 1) * layoutGap.leaf;
+        const blockH = Math.max(NODE.group.h, leavesHeight);
+        const groupNode = drawNode("group", cfg.groupX, gy + blockH / 2 - NODE.group.h / 2, NODE.group.w, NODE.group.h, { ...group, color: branch.color });
+        connect(root, groupNode, branch.color, cfg.anchor, 6);
+
+        let ly = gy;
+        for (const leaf of group.leaves) {
+          const [file, what, how] = leaf;
+          const leafNode = drawNode("leaf", cfg.leafX, ly, NODE.leaf.w, NODE.leaf.h, { file, what, how, color: branch.color });
+          connect(groupNode, leafNode, branch.color, cfg.anchor, 4.2);
+          ly += NODE.leaf.h + layoutGap.leaf;
+        }
+        gy += blockH + layoutGap.group;
+      }
+    }
+
+    const title = add("text", {
+      x: 280,
+      y: 17420,
+      fill: "#475569",
+      "font-size": "34",
+      "font-weight": "800"
+    });
+    title.textContent = "Generated for Elite Build CRM - logic map covers feature routes, APIs, utilities, functions, rules, tests and deployment guardrails.";
+
+    window.addEventListener("load", () => {
+      window.scrollTo({ left: CX - 1050, top: CY - 650 });
+    });
+  </script>
+</body>
+</html>

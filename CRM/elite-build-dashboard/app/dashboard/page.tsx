@@ -1,13 +1,13 @@
 "use client";
 import { useMemo, useState } from 'react';
-import { orderBy } from 'firebase/firestore';
+import { orderBy, where } from 'firebase/firestore';
 import { LayoutDashboard, Megaphone, Users } from 'lucide-react';
-import { useFirestoreCollection, useFirestoreCollectionKeyed } from '@/lib/hooks/useFirestoreCollection';
-import { where } from 'firebase/firestore';
+import { useFirestoreCollectionKeyed } from '@/lib/hooks/useFirestoreCollection';
 import { useAuth } from '@/lib/context/AuthContext';
 import { Lead } from '@/lib/types/lead';
 import { CRMUser } from '@/lib/types/user';
 import { MarketingTeam } from '@/lib/types/config';
+import { InventoryUnit } from '@/lib/types/inventory';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { MarketingDashboard } from '@/components/dashboard/MarketingDashboard';
 import { InternalDashboard } from '@/components/dashboard/InternalDashboard';
@@ -45,6 +45,10 @@ function ChannelPartnerView({ uid }: { uid: string }) {
     `own:${uid}`,
     constraints,
   );
+  const activeLeads = useMemo(
+    () => myLeads.filter(lead => !lead.archived_at && !lead.archived_at_iso),
+    [myLeads],
+  );
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -58,7 +62,7 @@ function ChannelPartnerView({ uid }: { uid: string }) {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-4 py-6 pb-12 sm:px-8">
-          <ChannelPartnerDashboard leads={myLeads} />
+          <ChannelPartnerDashboard leads={activeLeads} />
         </div>
       )}
     </div>
@@ -69,19 +73,56 @@ function ChannelPartnerView({ uid }: { uid: string }) {
 function TeamView({ currentUid }: { currentUid?: string }) {
   const { crmUser } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('internal');
+  const crmUserUid = crmUser?.uid;
+  const isLeadership = crmUser?.role === 'admin' || crmUser?.role === 'superadmin';
+  const isSalesExecutive = crmUser?.role === 'sales_exec';
+  const resolvedActiveTab: Tab = isLeadership ? activeTab : 'internal';
 
-  const { data: allLeads, loading: leadsLoading } = useFirestoreCollection<Lead>(
-    'leads',
-    orderBy('created_at', 'desc'),
+  const leadConstraints = useMemo(
+    () => isSalesExecutive && crmUserUid
+      ? [where('assigned_to', '==', crmUserUid)]
+      : [orderBy('created_at', 'desc')],
+    [isSalesExecutive, crmUserUid],
   );
-  const { data: users } = useFirestoreCollection<CRMUser & { id: string }>('users');
-  const { data: marketingTeams } = useFirestoreCollection<MarketingTeam & { id: string }>('marketing_teams');
+  const leadsSubscriptionKey = isSalesExecutive
+    ? (crmUserUid ? `assigned:${crmUserUid}` : null)
+    : 'all';
+
+  const { data: allLeads, loading: leadsLoading } = useFirestoreCollectionKeyed<Lead>(
+    'leads',
+    leadsSubscriptionKey,
+    leadConstraints,
+  );
+  const { data: leadershipUsers } = useFirestoreCollectionKeyed<CRMUser & { id: string }>(
+    'users',
+    isLeadership ? 'dashboard-team-users' : null,
+    [],
+  );
+  const { data: marketingTeams } = useFirestoreCollectionKeyed<MarketingTeam & { id: string }>(
+    'marketing_teams',
+    isLeadership ? 'dashboard-marketing-teams' : null,
+    [],
+  );
+  const { data: inventory } = useFirestoreCollectionKeyed<InventoryUnit>(
+    'inventory',
+    isLeadership ? 'dashboard-inventory' : null,
+    [],
+  );
 
   const ownLeadsOnly = can(crmUser?.role, 'view_own_leads_only') && !can(crmUser?.role, 'view_all_leads');
   const leads = useMemo(() => {
-    if (!ownLeadsOnly || !crmUser?.uid) return allLeads;
-    return allLeads.filter(l => l.owner_uid === crmUser.uid);
+    const activeLeads = allLeads.filter(lead => !lead.archived_at && !lead.archived_at_iso);
+    if (!ownLeadsOnly || !crmUser?.uid) return activeLeads;
+    return activeLeads.filter(l => l.owner_uid === crmUser.uid);
   }, [allLeads, ownLeadsOnly, crmUser]);
+  const dashboardUsers = useMemo(
+    () => isLeadership
+      ? leadershipUsers
+      : crmUser
+        ? [{ ...crmUser, id: crmUser.uid }]
+        : [],
+    [isLeadership, leadershipUsers, crmUser],
+  );
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -93,28 +134,30 @@ function TeamView({ currentUid }: { currentUid?: string }) {
         }
       />
 
-      <div className="px-4 pt-4 sm:px-8">
-        <div className="mn-segmented flex gap-1 overflow-x-auto px-2 py-2">
-        {TABS.map(tab => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-shrink-0 items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition-all ${
-                active
-                  ? 'mn-segmented-active'
-                  : 'mn-segmented-idle'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          );
-        })}
+      {isLeadership && (
+        <div className="px-4 pt-4 sm:px-8">
+          <div className="mn-segmented flex gap-1 overflow-x-auto px-2 py-2">
+            {TABS.map(tab => {
+              const Icon = tab.icon;
+              const active = resolvedActiveTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex flex-shrink-0 items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition-all ${
+                    active
+                      ? 'mn-segmented-active'
+                      : 'mn-segmented-idle'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Content */}
       {leadsLoading ? (
@@ -126,15 +169,21 @@ function TeamView({ currentUid }: { currentUid?: string }) {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-4 py-6 pb-12 sm:px-8">
-          {activeTab === 'marketing' && (
+          {isLeadership && resolvedActiveTab === 'marketing' && (
             <MarketingDashboard leads={leads} marketingTeams={marketingTeams} />
           )}
-          {activeTab === 'internal' && (
+          {resolvedActiveTab === 'internal' && (
             <InternalDashboard
               leads={leads}
-              users={users}
+              users={dashboardUsers}
+              inventory={inventory}
+              marketingTeams={marketingTeams}
               currentUid={currentUid}
-              showDemandGap={crmUser?.role === 'admin' || crmUser?.role === 'superadmin'}
+              scopeUid={isSalesExecutive ? currentUid : undefined}
+              allowUserScopeSelection={isLeadership}
+              showTeamInsights={isLeadership}
+              showRoi={isLeadership}
+              showDemandGap={isLeadership}
             />
           )}
         </div>

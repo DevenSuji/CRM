@@ -190,7 +190,7 @@ export function DateTimePicker({ label, value, onChange, min, required, classNam
                   onClick={() => handleSelectDay(day)}
                   className={`w-full aspect-square rounded-lg text-xs font-bold transition-all ${
                     selected
-                      ? 'bg-mn-h2 text-white shadow-md shadow-mn-h2/30'
+                      ? 'bg-mn-brand text-mn-brand-contrast shadow-md shadow-mn-brand/30'
                       : today
                         ? 'bg-mn-h2/10 text-mn-h2 font-black'
                         : disabled

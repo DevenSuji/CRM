@@ -1,9 +1,9 @@
 "use client";
-import { TimeSeriesPoint } from '@/lib/utils/dashboardMetrics';
+import { MarketingTimeSeriesPoint, TimeSeriesPoint } from '@/lib/utils/dashboardMetrics';
 import { formatPrice } from '@/lib/utils/formatPrice';
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend,
+  AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 
 interface ChartCardProps {
@@ -198,6 +198,69 @@ export function CallsTrendChart({ data }: CallsTrendProps) {
             animationEasing="ease-out"
           />
         </AreaChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+/* ==================== Executive Vital Signals ==================== */
+
+export function ExecutiveConversionTrendChart({ data }: LeadsConversionsProps) {
+  if (data.length === 0) return null;
+  return (
+    <ChartCard title="Conversion Signals">
+      <ResponsiveContainer width="100%" height={260}>
+        <AreaChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+          <defs>
+            <linearGradient id="gradVisits" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#06B6D4" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="#06B6D4" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="gradBookings" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#F59E0B" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="#F59E0B" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="gradClosedDeals" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#22C55E" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="#22C55E" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false} />
+          <YAxis tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} />
+          <Legend wrapperStyle={{ fontSize: '11px', fontWeight: 700 }} />
+          <Area type="monotone" dataKey="siteVisits" name="Site Visits" stroke="#06B6D4" strokeWidth={2} fill="url(#gradVisits)" />
+          <Area type="monotone" dataKey="bookings" name="Bookings" stroke="#F59E0B" strokeWidth={2} fill="url(#gradBookings)" />
+          <Area type="monotone" dataKey="closedDeals" name="Closed" stroke="#22C55E" strokeWidth={2} fill="url(#gradClosedDeals)" />
+        </AreaChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+/* ==================== Marketing Conversion Trend ==================== */
+
+interface MarketingTrendProps {
+  data: MarketingTimeSeriesPoint[];
+}
+
+export function MarketingConversionTrendChart({ data }: MarketingTrendProps) {
+  if (data.length === 0) return null;
+  return (
+    <ChartCard title="Marketing Conversion Trend">
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false} />
+          <YAxis tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} />
+          <Legend wrapperStyle={{ fontSize: '11px', fontWeight: 700 }} />
+          <Line type="monotone" dataKey="leads" name="Leads" stroke="#6366F1" strokeWidth={2.5} dot={false} />
+          <Line type="monotone" dataKey="siteVisits" name="Site Visits" stroke="#06B6D4" strokeWidth={2.5} dot={false} />
+          <Line type="monotone" dataKey="bookings" name="Bookings" stroke="#F59E0B" strokeWidth={2.5} dot={false} />
+          <Line type="monotone" dataKey="closedDeals" name="Closed" stroke="#22C55E" strokeWidth={2.5} dot={false} />
+        </LineChart>
       </ResponsiveContainer>
     </ChartCard>
   );

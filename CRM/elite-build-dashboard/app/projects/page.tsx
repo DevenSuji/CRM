@@ -1,16 +1,17 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import {
-  collection, addDoc, deleteDoc, doc, updateDoc, Timestamp, orderBy,
+  collection, addDoc, deleteDoc, doc, updateDoc, Timestamp, orderBy, where,
 } from 'firebase/firestore';
 import { geocodeAddress } from '@/lib/utils/geocode';
 import { Trash2, LayoutGrid, Database, Boxes, Megaphone } from 'lucide-react';
-import { useFirestoreCollection } from '@/lib/hooks/useFirestoreCollection';
+import { useFirestoreCollectionKeyed } from '@/lib/hooks/useFirestoreCollection';
 import { useToast } from '@/lib/hooks/useToast';
 import { useAuth } from '@/lib/context/AuthContext';
 import { Project, PropertyType, ProjectStatus, PROPERTY_TYPES, PROJECT_STATUSES } from '@/lib/types/project';
+import type { CRMUser } from '@/lib/types/user';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -36,22 +37,49 @@ const ALL_DETAIL_TABS: { id: DetailTab; label: string; icon: typeof LayoutGrid }
 
 export default function UnifiedProjectsPage() {
   const searchParams = useSearchParams();
-  const { data: projects, loading } = useFirestoreCollection<Project>(
-    'projects',
-    orderBy('created_at', 'desc'),
-  );
   const { showToast } = useToast();
   const { crmUser } = useAuth();
+  const isChannelPartner = crmUser?.role === 'channel_partner';
+  const projectSubscriptionKey = !crmUser
+    ? null
+    : isChannelPartner
+      ? `assigned:${crmUser.uid}`
+      : 'all';
+  const projectConstraints = useMemo(() => {
+    if (isChannelPartner && crmUser?.uid) {
+      return [where('channel_partner_uids', 'array-contains', crmUser.uid)];
+    }
+    return [orderBy('created_at', 'desc')];
+  }, [isChannelPartner, crmUser?.uid]);
+  const { data: projects, loading } = useFirestoreCollectionKeyed<Project>(
+    'projects',
+    projectSubscriptionKey,
+    projectConstraints,
+  );
   // Who can do what on this page.
   const canEditCore = can(crmUser?.role, 'edit_project_core');
   const canTagCampaigns = can(crmUser?.role, 'tag_project_campaigns');
-  // Digital-marketing users only see the Campaigns tab.
+  const canViewSalesSignals = canEditCore;
+  const { data: channelPartners } = useFirestoreCollectionKeyed<CRMUser & { id: string }>(
+    'users',
+    canEditCore ? 'channel-partners' : null,
+    [where('role', '==', 'channel_partner')],
+  );
   const DETAIL_TABS = canEditCore
     ? ALL_DETAIL_TABS
-    : ALL_DETAIL_TABS.filter(t => t.id === 'campaigns');
+    : crmUser?.role === 'digital_marketing'
+      ? ALL_DETAIL_TABS.filter(t => t.id === 'campaigns')
+      : ALL_DETAIL_TABS.filter(t => t.id === 'overview' || t.id === 'units');
 
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [activeTab, setActiveTab] = useState<DetailTab>(canEditCore ? 'overview' : 'campaigns');
+  const [activeTab, setActiveTab] = useState<DetailTab>('overview');
+
+  useEffect(() => {
+    if (DETAIL_TABS.length === 0) return;
+    if (!DETAIL_TABS.some(tab => tab.id === activeTab)) {
+      setActiveTab(DETAIL_TABS[0].id);
+    }
+  }, [DETAIL_TABS, activeTab]);
 
   // Auto-select project from query param (e.g., /projects?id=abc123)
   useEffect(() => {
@@ -78,12 +106,12 @@ export default function UnifiedProjectsPage() {
 
   // Keep selectedProject in sync with real-time data
   const currentProject = selectedProject
-    ? projects.find(p => p.id === selectedProject.id) || selectedProject
+    ? projects.find(p => p.id === selectedProject.id) || null
     : null;
 
   const handleSelectProject = (project: Project) => {
     setSelectedProject(project);
-    setActiveTab('overview');
+    setActiveTab(DETAIL_TABS[0]?.id || 'overview');
   };
 
   const resetForm = () => {
@@ -115,6 +143,7 @@ export default function UnifiedProjectsPage() {
         gallery,
         totalUnits: 0,
         priceRange: null,
+        channel_partner_uids: [],
         created_at: Timestamp.now(),
         updated_at: Timestamp.now(),
       });
@@ -150,10 +179,10 @@ export default function UnifiedProjectsPage() {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full overflow-y-auto">
       <PageHeader title="Projects" subtitle={`${projects.length} projects`} />
 
-      <div className="flex flex-1 flex-col gap-4 overflow-hidden pt-4 md:flex-row">
+      <div className="flex flex-col gap-4 pt-4">
         <ProjectSidebar
           projects={projects}
           selectedId={currentProject?.id || null}
@@ -163,9 +192,9 @@ export default function UnifiedProjectsPage() {
           loading={loading}
         />
 
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <main className="flex flex-col">
           {!currentProject ? (
-            <div className="app-shell-panel flex flex-1 flex-col items-center justify-center text-center">
+            <div className="app-shell-panel flex min-h-[28rem] flex-col items-center justify-center text-center">
               <Boxes className="w-16 h-16 text-mn-border mb-4" />
               <p className="font-bold text-lg text-mn-text-muted">Select a project to view details</p>
               <p className="text-xs text-mn-text-muted/60 mt-1">Or create a new one to get started</p>
@@ -209,15 +238,30 @@ export default function UnifiedProjectsPage() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-1 py-4 sm:px-2 sm:py-6">
+              <div className="px-1 py-4 sm:px-2 sm:py-6">
                 {activeTab === 'overview' && canEditCore && (
-                  <ProjectOverviewTab project={currentProject} isAdmin={canEditCore} />
+                  <ProjectOverviewTab
+                    project={currentProject}
+                    isAdmin={canEditCore}
+                    channelPartners={channelPartners.filter(user => user.active)}
+                    showBestBuyers={canViewSalesSignals}
+                  />
+                )}
+                {activeTab === 'overview' && !canEditCore && (
+                  <ProjectOverviewTab
+                    project={currentProject}
+                    isAdmin={false}
+                    showBestBuyers={canViewSalesSignals}
+                  />
                 )}
                 {activeTab === 'schema' && canEditCore && (
                   <ProjectSchemaTab project={currentProject} isAdmin={canEditCore} />
                 )}
                 {activeTab === 'units' && canEditCore && (
-                  <ProjectUnitsTab project={currentProject} isAdmin={canEditCore} />
+                  <ProjectUnitsTab project={currentProject} isAdmin={canEditCore} showBestBuyers={canViewSalesSignals} />
+                )}
+                {activeTab === 'units' && !canEditCore && (
+                  <ProjectUnitsTab project={currentProject} isAdmin={false} showBestBuyers={canViewSalesSignals} />
                 )}
                 {activeTab === 'campaigns' && (
                   <ProjectCampaignsTab project={currentProject} canEdit={canTagCampaigns} />
@@ -305,7 +349,8 @@ export default function UnifiedProjectsPage() {
             </Button>
             <Button
               type="button"
-              className="flex-1 !bg-mn-danger hover:!bg-mn-danger/90"
+              variant="danger"
+              className="flex-1"
               onClick={handleDeleteProject}
               disabled={deleting}
             >

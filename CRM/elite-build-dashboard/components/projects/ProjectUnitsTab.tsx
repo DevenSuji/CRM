@@ -5,14 +5,13 @@ import {
   collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDoc, Timestamp,
 } from 'firebase/firestore';
 import {
-  Plus, Trash2, X, ChevronRight, MapPin, ArrowUpDown, Search, Building2, Pencil, Save, AlertTriangle,
+  Plus, Trash2, X, ChevronRight, ArrowUpDown, Search, Building2, Pencil, Save, AlertTriangle,
 } from 'lucide-react';
 import { useFirestoreDoc } from '@/lib/hooks/useFirestoreDoc';
 import { useToast } from '@/lib/hooks/useToast';
 import { Project, SchemaField, DEFAULT_SCHEMA_FIELDS } from '@/lib/types/project';
-import { InventoryUnit, InventoryStatus } from '@/lib/types/inventory';
+import { InventoryUnit } from '@/lib/types/inventory';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { formatPrice } from '@/lib/utils/formatPrice';
 import { BestBuyersPanel } from '@/components/projects/BestBuyersPanel';
 import { ReverseMatchUnitSnapshot } from '@/lib/utils/reverseMatcher';
@@ -20,6 +19,7 @@ import { ReverseMatchUnitSnapshot } from '@/lib/utils/reverseMatcher';
 interface ProjectUnitsTabProps {
   project: Project;
   isAdmin: boolean;
+  showBestBuyers?: boolean;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -30,7 +30,10 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_OPTIONS = ['Available', 'Booked', 'Sold'];
 
-export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
+const canDeleteInventoryUnit = (unit: InventoryUnit) =>
+  unit.status === 'Available' && !unit.booked_by_lead_id;
+
+export function ProjectUnitsTab({ project, isAdmin, showBestBuyers = false }: ProjectUnitsTabProps) {
   const { showToast } = useToast();
 
   // Units data
@@ -64,7 +67,7 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
   const [savingEdit, setSavingEdit] = useState(false);
   const { data: reverseSnapshot } = useFirestoreDoc<ReverseMatchUnitSnapshot & { id: string }>(
     'reverse_match_units',
-    selectedUnit?.id || '',
+    showBestBuyers && selectedUnit?.id ? selectedUnit.id : '',
   );
 
   // Load schema. Normalize legacy fields saved before `scope` was required:
@@ -242,7 +245,7 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
           location: project.location,
           propertyType: project.propertyType,
           builder: project.builder,
-          status: row['status'] || 'Available',
+          status: 'Available',
           price: Number(row['price']) || 0,
           fields: row,
           created_at: Timestamp.now(),
@@ -258,19 +261,6 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
     } finally {
       setBulkSaving(false);
       setBulkProgress(null);
-    }
-  };
-
-  const handleStatusChange = async (unit: InventoryUnit, newStatus: InventoryStatus) => {
-    try {
-      await updateDoc(doc(db, 'inventory', unit.id), { status: newStatus });
-      if (selectedUnit?.id === unit.id) {
-        setSelectedUnit(prev => prev ? { ...prev, status: newStatus } : null);
-      }
-      showToast('success', `Status updated to ${newStatus}.`);
-    } catch (err) {
-      console.error(err);
-      showToast('error', 'Failed to update status.');
     }
   };
 
@@ -310,13 +300,12 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
     setSavingEdit(true);
     try {
       const newPrice = Number(editDraft['price']) || selectedUnit.price || 0;
-      const newStatus = (editDraft['status'] || selectedUnit.status || 'Available') as InventoryStatus;
       await updateDoc(doc(db, 'inventory', selectedUnit.id), {
         fields: editDraft,
         price: newPrice,
-        status: newStatus,
+        updated_at: Timestamp.now(),
       });
-      setSelectedUnit(prev => prev ? { ...prev, fields: editDraft, price: newPrice, status: newStatus } : null);
+      setSelectedUnit(prev => prev ? { ...prev, fields: editDraft, price: newPrice } : null);
       setEditingUnitFields(false);
       showToast('success', 'Unit updated.');
     } catch (err) {
@@ -328,6 +317,11 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
   };
 
   const handleDeleteUnit = async (unitId: string) => {
+    const unit = units.find(u => u.id === unitId) || selectedUnit;
+    if (unit && !canDeleteInventoryUnit(unit)) {
+      showToast('error', 'Only available, unbooked units can be deleted.');
+      return;
+    }
     setDeletingUnit(true);
     try {
       await deleteDoc(doc(db, 'inventory', unitId));
@@ -443,7 +437,7 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
   const inlineFields = unitFields
     .filter(f => !['price', 'status', 'unit_number', 'plot_number'].includes(f.key))
     .slice(0, 3);
-  const unitBestBuyers = reverseSnapshot?.buyers || [];
+  const unitBestBuyers = showBestBuyers ? reverseSnapshot?.buyers || [] : [];
 
   const renderInlineValue = (field: SchemaField, value: any) => {
     if (value === null || value === undefined || value === '') return '—';
@@ -577,24 +571,11 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
                       <span className="font-mono text-sm text-mn-h2 font-bold">{formatPrice(unit.price)}</span>
                     </td>
                     <td className="px-5 py-3.5">
-                      {isAdmin ? (
-                        <select
-                          value={unit.status || 'Available'}
-                          onChange={e => { e.stopPropagation(); handleStatusChange(unit, e.target.value as InventoryStatus); }}
-                          onClick={e => e.stopPropagation()}
-                          className={`text-[11px] px-2.5 py-1 rounded-full font-black border cursor-pointer focus:outline-none ${
-                            STATUS_COLORS[unit.status] || 'bg-mn-border/20 text-mn-text border-mn-border/30'
-                          }`}
-                        >
-                          {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      ) : (
-                        <span className={`text-[11px] px-2.5 py-1 rounded-full font-black border ${
-                          STATUS_COLORS[unit.status] || 'bg-mn-border/20 text-mn-text border-mn-border/30'
-                        }`}>
-                          {unit.status}
-                        </span>
-                      )}
+                      <span className={`text-[11px] px-2.5 py-1 rounded-full font-black border ${
+                        STATUS_COLORS[unit.status] || 'bg-mn-border/20 text-mn-text border-mn-border/30'
+                      }`}>
+                        {unit.status}
+                      </span>
                     </td>
                     <td className="px-5 py-3.5">
                       <ChevronRight className={`w-4 h-4 transition-colors ${isSelected ? 'text-mn-h2' : 'text-mn-text-muted/40'}`} />
@@ -626,29 +607,24 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
               {/* Status */}
               <div>
                 <label className="block text-[10px] font-black text-mn-h3 uppercase tracking-wider mb-1">Status</label>
-                {isAdmin ? (
-                  <select
-                    value={selectedUnit.status}
-                    onChange={e => handleStatusChange(selectedUnit, e.target.value as InventoryStatus)}
-                    className={`text-sm px-3 py-1.5 rounded-lg font-bold border cursor-pointer bg-transparent focus:outline-none w-full ${
-                      STATUS_COLORS[selectedUnit.status] || 'bg-mn-border/20 text-mn-text border-mn-border/30'
-                    }`}
-                  >
-                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                ) : (
-                  <span className={`text-sm px-3 py-1.5 rounded-lg font-bold border inline-block ${
-                    STATUS_COLORS[selectedUnit.status] || 'bg-mn-border/20 text-mn-text border-mn-border/30'
-                  }`}>
-                    {selectedUnit.status}
-                  </span>
-                )}
+                <span className={`text-sm px-3 py-1.5 rounded-lg font-bold border inline-block ${
+                  STATUS_COLORS[selectedUnit.status] || 'bg-mn-border/20 text-mn-text border-mn-border/30'
+                }`}>
+                  {selectedUnit.status}
+                </span>
               </div>
 
               {/* Admin Delete */}
               {isAdmin && (
                 <div className="border-t border-mn-border/20 pt-4">
-                  {confirmDeleteUnit === selectedUnit.id ? (
+                  {!canDeleteInventoryUnit(selectedUnit) ? (
+                    <button
+                      disabled
+                      className="flex items-center gap-1.5 text-xs font-bold text-mn-text-muted/60 cursor-not-allowed"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete Locked
+                    </button>
+                  ) : confirmDeleteUnit === selectedUnit.id ? (
                     <div className="p-3 bg-mn-danger/10 border border-mn-danger/20 rounded-lg space-y-2">
                       <p className="text-xs font-bold text-mn-danger">Permanently delete this unit?</p>
                       <div className="flex gap-2">
@@ -661,7 +637,7 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
                         <button
                           onClick={() => handleDeleteUnit(selectedUnit.id)}
                           disabled={deletingUnit}
-                          className="px-3 py-1.5 text-xs font-bold text-white bg-mn-danger rounded-lg hover:bg-mn-danger/80 disabled:opacity-50"
+                          className="px-3 py-1.5 text-xs font-bold text-mn-danger-contrast bg-mn-danger-action rounded-lg hover:bg-mn-danger-action/90 disabled:border disabled:border-mn-border/70 disabled:bg-mn-card/80 disabled:text-mn-text-muted"
                         >
                           {deletingUnit ? 'Deleting...' : 'Yes, Delete'}
                         </button>
@@ -723,7 +699,7 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
                       <button
                         onClick={handleSaveEditedFields}
                         disabled={savingEdit}
-                        className="flex-1 px-3 py-2 text-xs font-bold text-white bg-mn-h2 rounded-lg hover:bg-mn-h2/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-1"
+                        className="flex-1 px-3 py-2 text-xs font-bold text-mn-brand-contrast bg-mn-brand rounded-lg hover:bg-mn-brand/90 disabled:border disabled:border-mn-border/70 disabled:bg-mn-card/80 disabled:text-mn-text-muted transition-colors flex items-center justify-center gap-1"
                       >
                         <Save className="w-3.5 h-3.5" /> {savingEdit ? 'Saving…' : 'Save'}
                       </button>
@@ -764,6 +740,7 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
                 )}
               </div>
 
+              {showBestBuyers && (
               <div className="border-t border-mn-border/20 pt-4">
                 <BestBuyersPanel
                   title="Best Buyers"
@@ -775,6 +752,7 @@ export function ProjectUnitsTab({ project, isAdmin }: ProjectUnitsTabProps) {
                   compact
                 />
               </div>
+              )}
             </div>
           </div>
         )}

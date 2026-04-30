@@ -8,7 +8,7 @@ Checks all leads with upcoming site visits and sends WhatsApp reminders:
 
 Security:
   - Validates OIDC token from Cloud Scheduler OR X-Webhook-Key header
-  - WhatsApp credentials fetched from Firestore crm_config (server-side only)
+  - WhatsApp access token fetched from Secret Manager
 """
 
 import functions_framework
@@ -22,6 +22,7 @@ import os
 IST = timezone(timedelta(hours=5, minutes=30))
 
 _cached_webhook_key = None
+_cached_access_token = None
 
 
 def _get_webhook_key():
@@ -76,7 +77,26 @@ def _is_authorized(request):
     return False
 
 
-def send_whatsapp(config, to_phone, template_name, params):
+def _get_access_token():
+    """Fetch WhatsApp access token from Secret Manager."""
+    global _cached_access_token
+    if _cached_access_token:
+        return _cached_access_token
+
+    try:
+        client = secretmanager.SecretManagerServiceClient()
+        project_id = os.environ.get("GCP_PROJECT", "elite-build-crm")
+        secret_name = f"projects/{project_id}/secrets/whatsapp-access-token/versions/latest"
+        response = client.access_secret_version(request={"name": secret_name})
+        _cached_access_token = response.payload.data.decode("UTF-8").strip()
+        return _cached_access_token
+    except Exception as e:
+        print(f"SECRET_MANAGER_WARN: {e}")
+
+    return ""
+
+
+def send_whatsapp(config, access_token, to_phone, template_name, params):
     """Send a WhatsApp template message via Meta Business API."""
     # Clean phone number
     phone = to_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
@@ -87,7 +107,7 @@ def send_whatsapp(config, to_phone, template_name, params):
 
     url = f"https://graph.facebook.com/v21.0/{config['phone_number_id']}/messages"
     headers = {
-        "Authorization": f"Bearer {config['access_token']}",
+        "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
     body = {
@@ -130,6 +150,10 @@ def check_reminders(request):
         return ("WhatsApp not enabled", 200)
 
     wa_config = wa_doc.to_dict()
+    access_token = _get_access_token()
+    if not access_token:
+        return ("WhatsApp access token not configured", 200)
+
     now = datetime.now(IST)
     reminders_sent = 0
 
@@ -164,7 +188,7 @@ def check_reminders(request):
             if (not visit.get("reminder_day_before")
                     and timedelta(hours=17, minutes=30) <= time_until <= timedelta(hours=30, minutes=30)):
                 success = send_whatsapp(
-                    wa_config, phone,
+                    wa_config, access_token, phone,
                     wa_config.get("template_site_visit_reminder", "site_visit_reminder"),
                     [lead_name, visit_dt.strftime("%B %d at %I:%M %p"), visit_location],
                 )
@@ -187,7 +211,7 @@ def check_reminders(request):
                     and visit_dt.date() == now.date()
                     and 7 <= now.hour <= 8):
                 success = send_whatsapp(
-                    wa_config, phone,
+                    wa_config, access_token, phone,
                     wa_config.get("template_site_visit_reminder", "site_visit_reminder"),
                     [lead_name, visit_dt.strftime("today at %I:%M %p"), visit_location],
                 )

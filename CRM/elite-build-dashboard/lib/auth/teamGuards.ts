@@ -4,12 +4,9 @@
  * These encode the UX-level guardrails that keep an admin from locking
  * themselves out or bypassing the superadmin-only capability gate.
  *
- * IMPORTANT: these are *UI* guards — they sit in front of Firestore writes
- * but the Firestore rules today do not fully enforce all of them (notably,
- * the rules currently allow a user to self-promote via their own doc — see
- * docs/TechDebtAndSecurityPosture.md §5.6). Until the rules are hardened,
- * these predicates are the effective security boundary for role changes
- * made through the admin UI. That makes unit tests on them load-bearing.
+ * IMPORTANT: these are UX guards in front of Firestore writes. Firestore
+ * rules enforce the security boundary; these predicates keep the interface
+ * honest and keep user-facing denial messages consistent.
  */
 import { CRMUser, UserRole } from '@/lib/types/user';
 import { can } from '@/lib/utils/permissions';
@@ -75,6 +72,20 @@ export function canRemoveMember(
   }
   if (target.role === 'superadmin' && !canActAsSuperAdmin(actor)) {
     return { allowed: false, reason: 'Only a Super Admin can remove a Super Admin.' };
+  }
+  return ALLOWED;
+}
+
+export function canOnboardRole(
+  actor: CRMUser | null | undefined,
+  role: UserRole,
+): GuardResult {
+  if (!actor) return { allowed: false, reason: 'Not signed in.' };
+  if (!can(actor.role, 'onboard_users')) {
+    return { allowed: false, reason: 'Admin access is required to onboard users.' };
+  }
+  if (role === 'superadmin' && !canActAsSuperAdmin(actor)) {
+    return { allowed: false, reason: 'Only a Super Admin can onboard a Super Admin.' };
   }
   return ALLOWED;
 }

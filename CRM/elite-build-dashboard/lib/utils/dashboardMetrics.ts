@@ -1,6 +1,8 @@
 import { Lead } from '@/lib/types/lead';
 import { CRMUser } from '@/lib/types/user';
 import { MarketingTeam } from '@/lib/types/config';
+import { computeLeadIntelligence } from '@/lib/utils/leadIntelligence';
+import { leadSourceLabel, sourceMatches } from '@/lib/utils/leadSourceHygiene';
 
 /** useFirestoreCollection spreads the doc id into `id`, so CRMUser objects
  *  coming from that hook have both `uid` and `id`. Keep them in sync here. */
@@ -51,7 +53,7 @@ export interface MarketingMetrics {
 }
 
 export function computeMarketingMetrics(leads: Lead[], team: MarketingTeam): MarketingMetrics {
-  const teamLeads = leads.filter(l => team.sources.includes(l.source));
+  const teamLeads = leads.filter(l => sourceMatches(l.source, team.sources));
   const total = teamLeads.length;
   const spend = team.monthly_spend;
 
@@ -78,7 +80,8 @@ export function computeMarketingMetrics(leads: Lead[], team: MarketingTeam): Mar
       if (lead.ai_audit.urgency === 'High') highUrgency++;
     }
 
-    sourceMap.set(lead.source, (sourceMap.get(lead.source) || 0) + 1);
+    const sourceLabel = leadSourceLabel(lead);
+    sourceMap.set(sourceLabel, (sourceMap.get(sourceLabel) || 0) + 1);
 
     const campaign = lead.utm?.campaign;
     if (campaign) {
@@ -114,6 +117,7 @@ export function computeMarketingMetrics(leads: Lead[], team: MarketingTeam): Mar
 /* ==================== Internal Team Metrics ==================== */
 
 export interface InternalMetrics {
+  vitalStats: DashboardVitalStats;
   speedToLeadMins: number;
   leadToSVRatio: number;
   svToBookingRatio: number;
@@ -127,6 +131,20 @@ export interface InternalMetrics {
   funnelStages: NameValue[];
 }
 
+export interface DashboardVitalStats {
+  totalLeads: number;
+  openLeads: number;
+  unassignedLeads: number;
+  hotLeads: number;
+  scheduledSiteVisits: number;
+  expectedBookings: number;
+  forecastRevenue: number;
+  blockedRevenue: number;
+  marketingSpend: number;
+  roiMultiple: number;
+  netRoiPercent: number;
+}
+
 export interface AgingLead {
   id: string;
   name: string;
@@ -135,10 +153,26 @@ export interface AgingLead {
   assignedTo: string;
 }
 
+function bookingProbability(lead: Lead, now: Date): number {
+  if (lead.status === 'Closed' || lead.status === 'Rejected') return 0;
+  if (lead.status === 'Booked') return 0.9;
+
+  const intelligence = computeLeadIntelligence(lead, now);
+  const base = lead.status === 'Site Visit' ? 0.45
+    : lead.status === 'Property Matched' ? 0.28
+      : intelligence.temperature === 'Hot' ? 0.55
+        : intelligence.temperature === 'Warm' ? 0.3
+          : intelligence.temperature === 'Nurture' ? 0.14
+            : 0.05;
+
+  return (lead.objections || []).length > 0 ? base * 0.7 : base;
+}
+
 export function computeInternalMetrics(
   leads: Lead[],
   users: UserWithDocId[],
   filterUid?: string,
+  marketingSpend = 0,
 ): InternalMetrics {
   const filtered = filterUid
     ? leads.filter(l => l.assigned_to === filterUid)
@@ -162,6 +196,13 @@ export function computeInternalMetrics(
   let callsWeek = 0;
   let totalTalkTime = 0;
   let totalCalls = 0;
+  let openLeads = 0;
+  let unassignedLeads = 0;
+  let hotLeads = 0;
+  let scheduledSiteVisits = 0;
+  let expectedBookings = 0;
+  let forecastRevenue = 0;
+  let blockedRevenue = 0;
 
   const stageMap = new Map<string, number>();
   const agingLeads: AgingLead[] = [];
@@ -169,10 +210,23 @@ export function computeInternalMetrics(
   for (const lead of filtered) {
     const budget = lead.raw_data.budget || 0;
     stageMap.set(lead.status, (stageMap.get(lead.status) || 0) + 1);
+    const isTerminal = TERMINAL_STATUSES.includes(lead.status);
 
-    if (!TERMINAL_STATUSES.includes(lead.status)) {
+    if (!isTerminal) {
       pipelineValue += budget;
       nonTerminal++;
+      openLeads++;
+      if (!lead.assigned_to) unassignedLeads++;
+      const probability = bookingProbability(lead, now);
+      expectedBookings += probability;
+      forecastRevenue += budget * probability;
+
+      const intelligence = computeLeadIntelligence(lead, now);
+      if (intelligence.temperature === 'Hot') hotLeads++;
+
+      if ((lead.objections || []).length > 0 || intelligence.risks.some(risk => risk.toLowerCase().includes('stale'))) {
+        blockedRevenue += budget;
+      }
     }
     if (lead.status === 'Closed') {
       closed++;
@@ -185,6 +239,10 @@ export function computeInternalMetrics(
 
     if (SV_PLUS.includes(lead.status)) svPlus++;
     if (lead.status === 'Booked') booked++;
+
+    scheduledSiteVisits += (lead.site_visits || []).filter(visit =>
+      visit.status === 'scheduled' && new Date(visit.scheduled_at).getTime() >= now.getTime()
+    ).length;
 
     if (lead.created_at && lead.activity_log) {
       const firstCall = lead.activity_log.find(e => e.type === 'call');
@@ -237,6 +295,19 @@ export function computeInternalMetrics(
   const nonRejected = filtered.filter(l => l.status !== 'Rejected').length;
 
   return {
+    vitalStats: {
+      totalLeads: filtered.length,
+      openLeads,
+      unassignedLeads,
+      hotLeads,
+      scheduledSiteVisits,
+      expectedBookings: Number(expectedBookings.toFixed(1)),
+      forecastRevenue: Math.round(forecastRevenue),
+      blockedRevenue,
+      marketingSpend,
+      roiMultiple: marketingSpend > 0 ? Number((closedValue / marketingSpend).toFixed(2)) : 0,
+      netRoiPercent: marketingSpend > 0 ? ((closedValue - marketingSpend) / marketingSpend) * 100 : 0,
+    },
     speedToLeadMins: speedCount > 0 ? Math.round(totalSpeedMs / speedCount / 60000) : 0,
     leadToSVRatio: nonRejected > 0 ? (svPlus / nonRejected) * 100 : 0,
     svToBookingRatio: svPlus > 0 ? ((booked + closed) / svPlus) * 100 : 0,
@@ -265,6 +336,15 @@ export interface TimeSeriesPoint {
   revenue: number;
   pipelineValue: number;
   calls: number;
+}
+
+export interface MarketingTimeSeriesPoint {
+  label: string;
+  timestamp: number;
+  leads: number;
+  siteVisits: number;
+  bookings: number;
+  closedDeals: number;
 }
 
 function formatDateKey(date: Date, period: TimePeriod): { key: string; label: string } {
@@ -331,6 +411,34 @@ function generateBuckets(period: TimePeriod): Map<string, TimeSeriesPoint> {
   return buckets;
 }
 
+function generateMarketingBuckets(period: TimePeriod): Map<string, MarketingTimeSeriesPoint> {
+  const buckets = new Map<string, MarketingTimeSeriesPoint>();
+  const count = getBucketCount(period);
+  const now = new Date();
+
+  for (let i = count - 1; i >= 0; i--) {
+    const date = new Date(now);
+    switch (period) {
+      case 'daily': date.setDate(date.getDate() - i); break;
+      case 'weekly': date.setDate(date.getDate() - i * 7); break;
+      case 'monthly': date.setMonth(date.getMonth() - i); break;
+      case 'yearly': date.setFullYear(date.getFullYear() - i); break;
+    }
+    const { key, label } = formatDateKey(date, period);
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        label,
+        timestamp: date.getTime(),
+        leads: 0,
+        siteVisits: 0,
+        bookings: 0,
+        closedDeals: 0,
+      });
+    }
+  }
+  return buckets;
+}
+
 export function computeTimeSeries(leads: Lead[], period: TimePeriod, filterUid?: string): TimeSeriesPoint[] {
   const filtered = filterUid ? leads.filter(l => l.assigned_to === filterUid) : leads;
   const buckets = generateBuckets(period);
@@ -359,6 +467,36 @@ export function computeTimeSeries(leads: Lead[], period: TimePeriod, filterUid?:
           const callBucket = buckets.get(callKey);
           if (callBucket) callBucket.calls++;
         }
+      }
+    }
+  }
+
+  return Array.from(buckets.values()).sort((a, b) => a.timestamp - b.timestamp);
+}
+
+export function computeMarketingTimeSeries(
+  leads: Lead[],
+  team: MarketingTeam,
+  period: TimePeriod,
+): MarketingTimeSeriesPoint[] {
+  const teamLeads = leads.filter(l => sourceMatches(l.source, team.sources));
+  const buckets = generateMarketingBuckets(period);
+
+  for (const lead of teamLeads) {
+    if (!lead.created_at) continue;
+    const createdDate = lead.created_at.toDate();
+    const createdBucket = buckets.get(formatDateKey(createdDate, period).key);
+    if (!createdBucket) continue;
+
+    createdBucket.leads++;
+    if (['Site Visit', 'Booked', 'Closed'].includes(lead.status)) createdBucket.siteVisits++;
+    if (lead.status === 'Booked') createdBucket.bookings++;
+
+    if (lead.status === 'Closed') {
+      const closedDate = lead.lane_moved_at?.toDate?.() || createdDate;
+      const closedBucket = buckets.get(formatDateKey(closedDate, period).key);
+      if (closedBucket) {
+        closedBucket.closedDeals++;
       }
     }
   }

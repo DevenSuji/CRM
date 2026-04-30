@@ -359,6 +359,27 @@ describe('computeDragMove — simple_update', () => {
       newStatus: 'Booked',
     });
   });
+
+  it('emits simple_update for Site Visit → Booked only when booked_unit exists', () => {
+    const lead = makeLead({
+      id: 'l1',
+      status: 'Site Visit',
+      booked_unit: {
+        projectId: 'p1',
+        projectName: 'X',
+        unitId: 'u1',
+        unitLabel: 'A-101',
+        booked_at: '',
+        booked_by: '',
+      },
+    });
+    const result = computeDragMove('l1', 'booked', [lead], lanes);
+    expect(result).toEqual({
+      kind: 'simple_update',
+      leadId: 'l1',
+      newStatus: 'Booked',
+    });
+  });
 });
 
 describe('computeDragMove — block_booked', () => {
@@ -378,6 +399,50 @@ describe('computeDragMove — block_booked', () => {
     const result = computeDragMove('l1', 'booked', [lead], lanes);
     expect(result.kind).toBe('block_booked');
   });
+
+  it('blocks a drop onto a Booked card when the dragged lead has no booked_unit', () => {
+    const dragged = makeLead({ id: 'dragged', status: 'Site Visit' });
+    const bookedTarget = makeLead({ id: 'bookedTarget', status: 'Booked' });
+    const result = computeDragMove('dragged', 'bookedTarget', [dragged, bookedTarget], lanes);
+    expect(result.kind).toBe('block_booked');
+  });
+});
+
+describe('computeDragMove — close_sale_batch', () => {
+  const lanes = DEFAULT_KANBAN_CONFIG.lanes;
+  const bookedLead = makeLead({
+    id: 'l1',
+    status: 'Booked',
+    booked_unit: {
+      projectId: 'p1',
+      projectName: 'X',
+      unitId: 'u42',
+      unitLabel: 'A-101',
+      booked_at: '',
+      booked_by: '',
+    },
+  });
+
+  it('emits close_sale_batch when moving Booked → Closed with a held unit', () => {
+    const result = computeDragMove('l1', 'closed', [bookedLead], lanes);
+    expect(result).toEqual({
+      kind: 'close_sale_batch',
+      leadId: 'l1',
+      newStatus: 'Closed',
+      unitId: 'u42',
+    });
+  });
+
+  it('emits close_sale_batch when dropping a booked lead on a Closed card', () => {
+    const closedTarget = makeLead({ id: 'closedTarget', status: 'Closed' });
+    const result = computeDragMove('l1', 'closedTarget', [bookedLead, closedTarget], lanes);
+    expect(result).toEqual({
+      kind: 'close_sale_batch',
+      leadId: 'l1',
+      newStatus: 'Closed',
+      unitId: 'u42',
+    });
+  });
 });
 
 describe('computeDragMove — unbook_batch', () => {
@@ -393,16 +458,6 @@ describe('computeDragMove — unbook_batch', () => {
       booked_at: '',
       booked_by: '',
     },
-  });
-
-  it('emits unbook_batch when moving out of Booked with a held unit', () => {
-    const result = computeDragMove('l1', 'closed', [bookedLead], lanes);
-    expect(result).toEqual({
-      kind: 'unbook_batch',
-      leadId: 'l1',
-      newStatus: 'Closed',
-      unitId: 'u42',
-    });
   });
 
   it('emits unbook_batch when moving Booked → Rejected', () => {

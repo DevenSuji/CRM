@@ -2,16 +2,15 @@
  * Team-management guardrails — pin the UX invariants that keep admins from
  * locking themselves out or bypassing the superadmin-only capability gate.
  *
- * The extracted predicates are effectively the security boundary for role
- * changes made via the admin UI today (see lib/auth/teamGuards.ts for why).
- * A regression here would let, e.g., an admin promote themselves to
- * superadmin via a crafted state update — so these tests are load-bearing.
+ * Firestore rules enforce the actual security boundary. These extracted
+ * predicates pin the UX guardrails and user-facing denial logic.
  */
 import { describe, it, expect } from 'vitest';
 import {
   canChangeRole,
   canToggleActive,
   canRemoveMember,
+  canOnboardRole,
   assignableRoles,
   rankTeamMemberRole,
   compareTeamMembers,
@@ -147,6 +146,29 @@ describe('canRemoveMember', () => {
 });
 
 /* ==================== assignableRoles ==================== */
+
+describe('canOnboardRole', () => {
+  it('allows admin to onboard non-superadmin roles', () => {
+    expect(canOnboardRole(admin, 'sales_exec').allowed).toBe(true);
+    expect(canOnboardRole(admin, 'channel_partner').allowed).toBe(true);
+    expect(canOnboardRole(admin, 'admin').allowed).toBe(true);
+  });
+
+  it('denies admin onboarding a superadmin', () => {
+    const res = canOnboardRole(admin, 'superadmin');
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toMatch(/super admin/i);
+  });
+
+  it('allows superadmin to onboard a superadmin', () => {
+    expect(canOnboardRole(superadmin, 'superadmin').allowed).toBe(true);
+  });
+
+  it('denies sales users onboarding anyone', () => {
+    const res = canOnboardRole(sales, 'viewer');
+    expect(res.allowed).toBe(false);
+  });
+});
 
 describe('assignableRoles', () => {
   const options = [

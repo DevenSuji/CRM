@@ -98,15 +98,14 @@ The last two are one-off scripts, **not** cloud functions — they live in the `
 Not huge, but each one hides a potential runtime bug. Triage in Phase 4.
 
 ### 3.3 Logging noise
-84 `console.*` calls across 24 files (23 in `app/admin/page.tsx`, 22 in `app/page.tsx`). Acceptable for dev, but should be swapped for a structured logger with a `production: silent` mode before launch. `[polish-note] Firestore read:` logs API-key prefix — mild info leak.
+84 `console.*` calls across 24 files (23 in `app/admin/page.tsx`, 22 in `app/page.tsx`). Acceptable for dev, but should be swapped for a structured logger with a `production: silent` mode before launch.
 
 ### 3.4 Duplicated logic
 - **Lead ownership filtering.** Same `ownLeadsOnly` + `useMemo` filter pattern lives in `app/page.tsx`, `app/dashboard/page.tsx` (twice, in both CP and team views). Should be a hook, e.g. `useScopedLeads()`.
 - **Firebase SDK version pinning.** `firebase@12.11.0` is one minor behind the version that shipped the `INTERNAL ASSERTION FAILED (ID: ca9)` fix some users report on v12.12+. Track this.
 
 ### 3.5 TODOs in code
-Only one real TODO, well-documented:
-- `lib/types/config.ts:68` — migrate `api_key` (Gemini) / WhatsApp access token to Secret Manager. (Dashboard side — the Cloud Functions side already uses Secret Manager.)
+The previous secret-migration TODO for Gemini and WhatsApp config was remediated on 2026-04-26 in dashboard code and Firestore rules. Remaining work is operational: rotate leaked/legacy credentials, set runtime secrets, delete old Firestore fields, and purge leaked Git history.
 
 ### 3.6 Misc
 - **Empty `public/` directory** — Next.js default assets deleted, never replaced. Harmless.
@@ -118,31 +117,19 @@ Only one real TODO, well-documented:
 
 ## 4. Security posture top-N
 
-### 4.1 Secrets stored in Firestore (HIGH)
-Two high-value secrets live in `crm_config/*` docs and are readable by **any active authenticated user** (per `allow read: if isActive()`):
-- `crm_config/ai.api_key` — Gemini API key
-- `crm_config/whatsapp.access_token` — Meta Graph API token
+### 4.1 Secrets stored in Firestore (HIGH) — REMEDIATED IN CODE
+As of 2026-04-26, dashboard code no longer stores Gemini or WhatsApp credentials in `crm_config/*`, Admin UI no longer accepts those secrets, and Firestore rules restrict `crm_config/ai` and `crm_config/whatsapp` reads to Admin/SuperAdmin.
 
-**Impact:** any logged-in user (incl. Viewer, Channel Partner) can read these via the Firebase JS SDK. A rogue CP with browser devtools can exfiltrate both.
+**Remaining operational cleanup:** rotate any credential that was ever stored in Firestore or GitHub, set `GEMINI_API_KEY` / `WHATSAPP_ACCESS_TOKEN` in the server environment, delete legacy `crm_config/ai.api_key` and `crm_config/whatsapp.access_token` fields from production Firestore, and purge leaked Git history.
 
-**Mitigation:** migrate to Secret Manager (Cloud Functions already use it). Dashboard code that reads these tokens client-side (e.g. `app/page.tsx:1066` sending WhatsApp directly from the browser) must be moved to a server route.
+### 4.2 API routes have no caller verification (HIGH) — REMEDIATED IN CODE
+`/api/geocode`, `/api/resolve-map-url`, and `/api/polish-note` now require an active CRM user, validate payload size/shape, and enforce per-user rate limits before calling Google/Gemini services.
 
-### 4.2 API routes have no caller verification (HIGH)
-`/api/geocode`, `/api/resolve-map-url`, `/api/polish-note` — none verify `Authorization: Bearer <Firebase ID token>`. Anyone who can reach the hosted URL can:
-- Burn Google Maps API quota
-- Burn Gemini API quota via `/api/polish-note`
+### 4.3 Users can update their own doc without field guards (MEDIUM) — REMEDIATED IN CODE
+Self-updates are now limited to display-only fields (`name`, `photo_url`). Browser clients cannot change their own `role`, `active`, or other privileged user fields. Browser first-user bootstrap writes are also blocked; the Admin SDK login resolver owns bootstrap and pending-user migration.
 
-**Fix:** require `getAuth(adminApp).verifyIdToken(token)` at the top of every `/api/*` POST. Add rate-limiting (Cloud Armor or middleware) to the public endpoints that must stay open.
-
-### 4.3 Users can update their own doc without field guards (MEDIUM)
-`firestore.rules:92` — `allow update: if isAuth() && request.auth.uid == userId`. Comment says "UIs don't expose role/active edits for self; tighten later if abuse is seen." A tampered client can POST `{ role: 'superadmin', active: true }` to their own doc and escalate.
-
-**Fix:** add `request.resource.data.role == resource.data.role && request.resource.data.active == resource.data.active` to the self-update clause.
-
-### 4.4 WhatsApp token sent from the browser (HIGH)
-`app/page.tsx:1066, 1092` — the WhatsApp access token is pulled from `crm_config/whatsapp` on the client and attached to `Authorization: Bearer`. The token is therefore visible in every user's browser memory, JS bundle exfil, or network tab.
-
-**Fix:** move the send to a Next.js server route or Cloud Function. The `on_lead_match_update` function already proves the server-side pattern works.
+### 4.4 WhatsApp token sent from the browser (HIGH) — REMEDIATED IN CODE
+WhatsApp sends now go through server routes. The browser no longer receives or attaches the WhatsApp access token, and Firestore rules restrict `crm_config/whatsapp` reads to Admin/SuperAdmin.
 
 ### 4.5 ~~Client-side Exotel credentials~~ — REMEDIATED 2026-04-21
 Exotel click-to-call has been removed from the codebase (dashboard + Cloud Function). Calls are now manual. No credentials pass through the browser.
@@ -151,8 +138,10 @@ Exotel click-to-call has been removed from the codebase (dashboard + Cloud Funct
 All three routes do minimal `typeof x !== 'string'` checks. No length limits, no schema validation (Zod isn't installed). Partly mitigated by Google/Gemini rejecting garbage, but `/api/polish-note` accepts up to 4000 chars that get concatenated into a prompt — prompt-injection surface.
 
 ### 4.7 Firestore rules vs UI mismatches (MEDIUM)
-We fixed one (CP full-collection listener) on 2026-04-21. Others to audit:
-- `inventory` read — rules allow any `isActive()` user, including CP. Does the UI ever expose inventory to CP? If not, tighten.
+Major mismatches closed during Security Audit Pass 2:
+- `inventory` reads are project-scoped; Channel Partners can read only inventory for assigned projects.
+- Sales Exec lead visibility is enforced in Firestore rules, not only in the UI.
+- Reverse-match buyer snapshots, demand-gap reports, marketing teams, audit logs, and call recordings are restricted to Admin/SuperAdmin where the data contains cross-team or sensitive buyer intelligence.
 - `marketing_teams` read — same. Tighten to roles that actually need it (admin, sales_exec, digital_marketing).
 
 ### 4.8 WhatsApp webhook auth (LOW)

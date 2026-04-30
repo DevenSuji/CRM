@@ -9,9 +9,36 @@ interface ImageUploadProps {
   onChange: (url: string | null) => void;
   folder?: string;
   label?: string;
+  helperText?: string;
+  minWidth?: number;
+  minHeight?: number;
 }
 
-export function ImageUpload({ value, onChange, folder = 'projects', label }: ImageUploadProps) {
+function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Could not read image dimensions.'));
+    };
+    image.src = objectUrl;
+  });
+}
+
+export function ImageUpload({
+  value,
+  onChange,
+  folder = 'projects',
+  label,
+  helperText,
+  minWidth,
+  minHeight,
+}: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -27,6 +54,18 @@ export function ImageUpload({ value, onChange, folder = 'projects', label }: Ima
     if (file.size > 5 * 1024 * 1024) {
       setError('Image must be under 5MB.');
       return;
+    }
+    if (minWidth || minHeight) {
+      try {
+        const dimensions = await readImageDimensions(file);
+        if ((minWidth && dimensions.width < minWidth) || (minHeight && dimensions.height < minHeight)) {
+          setError(`Image must be at least ${minWidth || 0} x ${minHeight || 0}px. Selected image is ${dimensions.width} x ${dimensions.height}px.`);
+          return;
+        }
+      } catch {
+        setError('Could not validate image size. Please choose a different image.');
+        return;
+      }
     }
 
     setUploading(true);
@@ -59,7 +98,7 @@ export function ImageUpload({ value, onChange, folder = 'projects', label }: Ima
           <button
             type="button"
             onClick={() => onChange(null)}
-            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-mn-danger/80 text-white flex items-center justify-center hover:bg-mn-danger transition-colors"
+            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-mn-danger-action text-mn-danger-contrast flex items-center justify-center hover:bg-mn-danger-action/90 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -80,7 +119,9 @@ export function ImageUpload({ value, onChange, folder = 'projects', label }: Ima
             <>
               <ImagePlus className="w-6 h-6" />
               <span className="text-xs font-bold">Click to upload image</span>
-              <span className="text-[10px] text-mn-text-muted/50">Max 5MB, JPG/PNG</span>
+              <span className="text-[10px] text-mn-text-muted/50">
+                {helperText || 'Max 5MB, JPG/PNG'}
+              </span>
             </>
           )}
         </button>
@@ -92,6 +133,7 @@ export function ImageUpload({ value, onChange, folder = 'projects', label }: Ima
         onChange={handleUpload}
         className="hidden"
       />
+      {helperText && value && <p className="text-[10px] text-mn-text-muted mt-1.5">{helperText}</p>}
       {error && <p className="text-xs text-mn-danger mt-1">{error}</p>}
     </div>
   );

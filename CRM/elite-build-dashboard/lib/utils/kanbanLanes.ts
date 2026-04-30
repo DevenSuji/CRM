@@ -95,13 +95,21 @@ export function groupLeadsByLane(
  *  - `block_booked`        : target is Booked but the lead has no `booked_unit`
  *                            yet — the UI should open the lead detail so the
  *                            user picks the unit.
- *  - `unbook_batch`        : moving OUT of Booked while a unit is held. Must
- *                            be written as a batch (lead + inventory) so the
- *                            two stay in sync.
+ *  - `close_sale_batch`    : moving Booked → Closed while a unit is held.
+ *                            Must mark the inventory unit Sold.
+ *  - `unbook_batch`        : moving OUT of Booked to a non-closed stage while
+ *                            a unit is held. Must be written as a batch
+ *                            (lead + inventory) so the two stay in sync.
  *  - `simple_update`       : ordinary lane move. One `updateDoc`. */
 export type DragDecision =
   | { kind: 'noop' }
   | { kind: 'block_booked'; lead: Lead }
+  | {
+      kind: 'close_sale_batch';
+      leadId: string;
+      newStatus: string;
+      unitId: string;
+    }
   | {
       kind: 'unbook_batch';
       leadId: string;
@@ -144,7 +152,19 @@ export function computeDragMove(
     return { kind: 'block_booked', lead };
   }
 
-  // Moving OUT of Booked while a unit is held: must free the unit atomically.
+  // Closing a booked lead completes the sale: keep the booking on the lead and
+  // mark the inventory unit as Sold.
+  if (currentLaneId === 'booked' && targetLaneId === 'closed' && lead.booked_unit) {
+    return {
+      kind: 'close_sale_batch',
+      leadId: activeLeadId,
+      newStatus,
+      unitId: lead.booked_unit.unitId,
+    };
+  }
+
+  // Moving OUT of Booked to a non-closed stage while a unit is held: free the
+  // unit atomically.
   if (currentLaneId === 'booked' && lead.booked_unit) {
     return {
       kind: 'unbook_batch',

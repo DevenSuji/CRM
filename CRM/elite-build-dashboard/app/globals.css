@@ -1,35 +1,48 @@
 @import "tailwindcss";
 
 :root {
-  /* Fallback — Light palette (prevents flash before JS hydrates) */
-  --mn-bg: #F6F4EF;
-  --mn-surface: #F8F5EE;
-  --mn-card: #FFFDF8;
-  --mn-card-hover: #FFFFFF;
-  --mn-h1: #173B34;
-  --mn-h2: #256E5F;
-  --mn-h3: #456158;
-  --mn-text: #182722;
-  --mn-text-muted: #687B73;
-  --mn-border: rgba(33, 71, 61, 0.14);
-  --mn-border-subtle: rgba(33, 71, 61, 0.08);
-  --mn-success: #159A73;
-  --mn-warning: #D78A16;
-  --mn-danger: #D95757;
-  --mn-info: #3A78B8;
-  --mn-sidebar-bg: #FFFDF8;
-  --mn-sidebar-active: #256E5F;
-  --mn-lane-panel: #FDFBF7;
-  --mn-input-bg: rgba(255, 255, 255, 0.9);
-  --mn-input-border: rgba(33, 71, 61, 0.18);
-  --mn-input-focus: #2F8D78;
-  --mn-overlay: rgba(19, 31, 27, 0.44);
-  --mn-accent: #C79042;
-  --mn-lane-divider: rgba(33, 71, 61, 0.1);
-  --mn-ring: rgba(47, 141, 120, 0.28);
-  --mn-shadow: 0 24px 80px rgba(18, 39, 33, 0.12);
-  --mn-shadow-soft: 0 12px 40px rgba(18, 39, 33, 0.08);
-  --mn-radius-card: 28px;
+  /* Fallback light palette prevents a flash before the client theme hydrates. */
+  --mn-bg: #F4F5F3;
+  --mn-surface: #FBFBFA;
+  --mn-card: rgba(255, 255, 255, 0.94);
+  --mn-card-hover: rgba(255, 255, 255, 0.98);
+  --mn-h1: #101211;
+  --mn-h2: #303634;
+  --mn-h3: #4A514E;
+  --mn-text: #171A18;
+  --mn-text-muted: #4F5753;
+  --mn-border: rgba(45, 51, 48, 0.32);
+  --mn-border-subtle: rgba(45, 51, 48, 0.16);
+  --mn-success: #2F6150;
+  --mn-warning: #6C5740;
+  --mn-danger: #7A3F3F;
+  --mn-danger-action: #7A3F3F;
+  --mn-danger-contrast: #FFFFFF;
+  --mn-info: #3F596C;
+  --mn-sidebar-bg: rgba(248, 249, 247, 0.96);
+  --mn-sidebar-active: #202523;
+  --mn-lane-panel: rgba(251, 251, 250, 0.94);
+  --mn-input-bg: rgba(255, 255, 255, 0.96);
+  --mn-input-border: rgba(45, 51, 48, 0.34);
+  --mn-input-focus: #202523;
+  --mn-overlay: rgba(20, 21, 20, 0.34);
+  --mn-accent: #555F5A;
+  --mn-lane-divider: rgba(45, 51, 48, 0.18);
+  --mn-ring: rgba(32, 37, 35, 0.28);
+  --mn-shadow: 0 24px 70px rgba(35, 39, 37, 0.16);
+  --mn-shadow-soft: 0 12px 30px rgba(35, 39, 37, 0.09);
+  --mn-metal-sheen: rgba(255, 255, 255, 0.62);
+  --mn-metal-grain: rgba(82, 86, 84, 0.12);
+  --mn-metal-pit: rgba(108, 112, 110, 0.1);
+  --mn-metal-ridge: rgba(255, 255, 255, 0.7);
+  --mn-metal-overlay: rgba(255, 255, 255, 0.24);
+  --mn-metal-contrast: rgba(76, 79, 77, 0.1);
+  --mn-brand: #303634;
+  --mn-brand-contrast: #FFFFFF;
+  --mn-brand-soft: rgba(85, 88, 86, 0.16);
+  --mn-brand-border: rgba(85, 88, 86, 0.28);
+  --mn-brand-gradient: linear-gradient(145deg, #555856, #8B8F8C);
+  --mn-radius-card: 24px;
 }
 
 @theme inline {
@@ -47,6 +60,8 @@
   --color-mn-success: var(--mn-success);
   --color-mn-warning: var(--mn-warning);
   --color-mn-danger: var(--mn-danger);
+  --color-mn-danger-action: var(--mn-danger-action);
+  --color-mn-danger-contrast: var(--mn-danger-contrast);
   --color-mn-info: var(--mn-info);
   --color-mn-sidebar-bg: var(--mn-sidebar-bg);
   --color-mn-sidebar-active: var(--mn-sidebar-active);
@@ -58,6 +73,10 @@
   --color-mn-accent: var(--mn-accent);
   --color-mn-lane-divider: var(--mn-lane-divider);
   --color-mn-ring: var(--mn-ring);
+  --color-mn-brand: var(--mn-brand);
+  --color-mn-brand-contrast: var(--mn-brand-contrast);
+  --color-mn-brand-soft: var(--mn-brand-soft);
+  --color-mn-brand-border: var(--mn-brand-border);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -72,19 +91,22 @@ html {
 body {
   min-height: 100%;
   background-image:
-    radial-gradient(circle at top left, rgba(47, 141, 120, 0.08), transparent 24rem),
-    radial-gradient(circle at 80% 0%, rgba(199, 144, 66, 0.08), transparent 20rem),
-    linear-gradient(180deg, color-mix(in srgb, var(--mn-bg) 96%, white), var(--mn-bg));
+    radial-gradient(ellipse at 15% 10%, var(--mn-metal-sheen), transparent 20rem),
+    radial-gradient(ellipse at 78% 8%, color-mix(in srgb, var(--mn-metal-ridge) 74%, transparent), transparent 24rem),
+    radial-gradient(ellipse at 38% 88%, var(--mn-metal-contrast), transparent 30rem),
+    linear-gradient(100deg, color-mix(in srgb, var(--mn-bg) 92%, white), var(--mn-bg) 46%, color-mix(in srgb, var(--mn-bg) 90%, black));
   background-position:
-    top left,
-    80% 0%,
+    18% 16%,
+    78% 12%,
+    40% 85%,
     center center;
   background-repeat: no-repeat;
-  background-size: auto, auto, cover;
+  background-size: auto, auto, auto, cover;
   color: var(--mn-text);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
-  text-rendering: geometricPrecision;
-  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
 }
 
 body::before {
@@ -92,9 +114,29 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(circle at top, rgba(255,255,255,0.06), transparent 38%),
-    linear-gradient(180deg, rgba(255,255,255,0.02), rgba(7, 12, 11, 0.05));
+  background-image:
+    radial-gradient(circle at 18% 22%, var(--mn-metal-grain) 0 0.05rem, transparent 0.058rem),
+    radial-gradient(circle at 72% 28%, var(--mn-metal-ridge) 0 0.046rem, transparent 0.054rem),
+    radial-gradient(circle at 40% 80%, var(--mn-metal-pit) 0 0.04rem, transparent 0.05rem),
+    radial-gradient(circle at 65% 62%, var(--mn-metal-grain) 0 0.032rem, transparent 0.042rem),
+    repeating-radial-gradient(ellipse at 52% 48%, transparent 0 0.2rem, var(--mn-metal-contrast) 0.23rem 0.28rem, transparent 0.31rem 0.5rem),
+    linear-gradient(102deg, transparent 6%, var(--mn-metal-overlay) 44%, transparent 72%);
+  background-position:
+    0 0,
+    0.45rem 0.3rem,
+    0.15rem 0.6rem,
+    0.7rem 0.15rem,
+    center,
+    center;
+  background-size:
+    0.56rem 0.56rem,
+    0.88rem 0.88rem,
+    0.42rem 0.42rem,
+    0.72rem 0.72rem,
+    34rem 28rem,
+    cover;
+  mix-blend-mode: multiply;
+  opacity: 0.38;
   z-index: -1;
 }
 
@@ -103,8 +145,22 @@ body::after {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  backdrop-filter: blur(5px) saturate(0.9);
+  background:
+    repeating-linear-gradient(78deg, transparent 0 0.38rem, color-mix(in srgb, var(--mn-metal-ridge) 11%, transparent) 0.42rem 0.48rem, transparent 0.54rem 0.9rem),
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--mn-metal-ridge) 20%, transparent), transparent),
+    linear-gradient(180deg, color-mix(in srgb, var(--mn-metal-overlay) 28%, transparent), transparent 38%, color-mix(in srgb, var(--mn-metal-contrast) 34%, transparent));
+  backdrop-filter: none;
+  opacity: 0.24;
   z-index: -1;
+}
+
+:root[data-theme="dark"] body::before {
+  mix-blend-mode: screen;
+  opacity: 0.26;
+}
+
+:root[data-theme="dark"] body::after {
+  opacity: 0.18;
 }
 
 ::selection {
@@ -156,28 +212,39 @@ select option {
 }
 
 .glass-panel {
-  background: var(--mn-card);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--mn-card-hover) 46%, transparent), transparent 34%),
+    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--mn-metal-ridge) 42%, transparent), transparent 18rem),
+    var(--mn-card);
   border: 1px solid var(--mn-border);
-  box-shadow: var(--mn-shadow-soft);
-  backdrop-filter: blur(18px);
+  box-shadow: var(--mn-shadow-soft), inset 0 1px 0 color-mix(in srgb, var(--mn-metal-ridge) 32%, transparent);
+  backdrop-filter: blur(18px) saturate(0.96);
 }
 
 .app-shell-panel {
-  background: color-mix(in srgb, var(--mn-card) 94%, transparent);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--mn-card-hover) 44%, transparent), transparent 36%),
+    radial-gradient(circle at 16% 12%, color-mix(in srgb, var(--mn-metal-ridge) 36%, transparent), transparent 17rem),
+    radial-gradient(circle at 78% 86%, color-mix(in srgb, var(--mn-metal-contrast) 26%, transparent), transparent 19rem),
+    color-mix(in srgb, var(--mn-card) 96%, var(--mn-surface));
   border: 1px solid color-mix(in srgb, var(--mn-border) 88%, transparent);
-  box-shadow: var(--mn-shadow-soft);
-  backdrop-filter: blur(18px);
+  box-shadow: var(--mn-shadow-soft), inset 0 1px 0 color-mix(in srgb, var(--mn-metal-ridge) 28%, transparent);
+  backdrop-filter: blur(18px) saturate(0.96);
 }
 
 .mn-segmented {
-  background: color-mix(in srgb, var(--mn-card) 74%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mn-metal-ridge) 16%, transparent), transparent),
+    color-mix(in srgb, var(--mn-card) 92%, var(--mn-surface));
   border: 1px solid color-mix(in srgb, var(--mn-border) 85%, transparent);
   box-shadow: var(--mn-shadow-soft);
   backdrop-filter: blur(14px);
 }
 
 .mn-segmented-active {
-  background: color-mix(in srgb, var(--mn-card-hover) 92%, var(--mn-card));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mn-metal-ridge) 22%, transparent), transparent),
+    color-mix(in srgb, var(--mn-card-hover) 92%, var(--mn-card));
   color: var(--mn-h1);
   box-shadow: 0 10px 24px color-mix(in srgb, var(--mn-text) 10%, transparent);
 }
@@ -193,10 +260,11 @@ select option {
 
 .mn-board-shell {
   background:
+    radial-gradient(circle at 12% 10%, color-mix(in srgb, var(--mn-metal-ridge) 24%, transparent), transparent 20rem),
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--mn-surface) 92%, transparent),
-      color-mix(in srgb, var(--mn-surface) 86%, var(--mn-bg))
+      color-mix(in srgb, var(--mn-surface) 96%, var(--mn-bg)),
+      color-mix(in srgb, var(--mn-surface) 92%, var(--mn-bg))
     );
   border: 1px solid color-mix(in srgb, var(--mn-border) 92%, transparent);
   box-shadow: var(--mn-shadow-soft);
@@ -204,10 +272,11 @@ select option {
 
 .mn-lane-shell {
   background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mn-metal-ridge) 16%, transparent), transparent 38%),
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--mn-card) 92%, transparent),
-      color-mix(in srgb, var(--mn-surface) 88%, transparent)
+      color-mix(in srgb, var(--mn-card) 96%, var(--mn-surface)),
+      color-mix(in srgb, var(--mn-surface) 94%, var(--mn-bg))
     );
   border: 1px solid color-mix(in srgb, var(--mn-h3) 22%, var(--mn-border));
   box-shadow:
@@ -217,13 +286,16 @@ select option {
 }
 
 .mn-lane-header {
-  background: color-mix(in srgb, var(--mn-card-hover) 88%, var(--mn-card));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mn-metal-ridge) 18%, transparent), transparent),
+    color-mix(in srgb, var(--mn-card-hover) 88%, var(--mn-card));
   border: 1px solid color-mix(in srgb, var(--mn-border) 78%, transparent);
   box-shadow: 0 8px 20px color-mix(in srgb, var(--mn-text) 5%, transparent);
 }
 
 .mn-lane-well {
   background:
+    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--mn-metal-ridge) 16%, transparent), transparent 18rem),
     linear-gradient(
       180deg,
       color-mix(in srgb, var(--mn-bg) 88%, var(--mn-surface)),
@@ -233,12 +305,15 @@ select option {
 }
 
 .mn-soft-inset {
-  background: color-mix(in srgb, var(--mn-card) 78%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mn-metal-ridge) 14%, transparent), transparent),
+    color-mix(in srgb, var(--mn-card) 92%, var(--mn-surface));
   border: 1px solid color-mix(in srgb, var(--mn-border) 65%, transparent);
 }
 
 .mn-kanban-card {
   background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mn-metal-ridge) 16%, transparent), transparent 40%),
     linear-gradient(
       180deg,
       color-mix(in srgb, var(--mn-card-hover) 92%, var(--mn-card)),

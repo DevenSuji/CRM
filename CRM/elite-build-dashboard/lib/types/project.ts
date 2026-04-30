@@ -39,6 +39,8 @@ export interface Project {
   project_fields?: Record<string, any>;
   /** Geocoded coordinates for proximity matching */
   geo?: { lat: number; lng: number };
+  /** Channel Partner user IDs allowed to view/work this project. */
+  channel_partner_uids?: string[];
   /** Marketing campaigns attached to this project. Writable by digital_marketing, admin, superadmin. */
   campaigns?: Campaign[];
   created_at: Timestamp | null;

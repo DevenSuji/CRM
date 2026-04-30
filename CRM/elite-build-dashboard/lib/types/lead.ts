@@ -3,6 +3,9 @@ import { Timestamp } from 'firebase/firestore';
 export interface LeadRawData {
   lead_name: string;
   phone: string;
+  /** WhatsApp number if captured separately from phone */
+  whatsapp?: string;
+  whatsapp_number?: string;
   email: string;
   budget: number;
   plan_to_buy: string;
@@ -26,7 +29,16 @@ export interface AIAudit {
   urgency: 'High' | 'Medium' | 'Low';
 }
 
-export type ActivityEntryType = 'note' | 'call' | 'status_change' | 'site_visit_scheduled' | 'site_visit_cancelled' | 'whatsapp_sent' | 'callback_scheduled' | 'property_details_sent';
+export type LeadObjection =
+  | 'price'
+  | 'location'
+  | 'legal'
+  | 'family_decision'
+  | 'loan_payment'
+  | 'comparison'
+  | 'timing';
+
+export type ActivityEntryType = 'note' | 'call' | 'status_change' | 'site_visit_scheduled' | 'site_visit_cancelled' | 'whatsapp_sent' | 'whatsapp_received' | 'whatsapp_linked' | 'callback_scheduled' | 'property_details_sent' | 'lead_merged' | 'lead_assigned' | 'task_completed' | 'objection_updated';
 
 export interface InterestedProperty {
   projectId: string;
@@ -57,6 +69,12 @@ export interface ActivityLogEntry {
   /** For call entries */
   call_duration?: number;
   call_recording_url?: string;
+  merged_lead_id?: string;
+  assigned_to?: string;
+  task_id?: string;
+  /** Structured stage-change governance fields for rejection/closure/cancellation analytics. */
+  stage_reason_kind?: string;
+  stage_reason_category?: string;
 }
 
 export interface CallbackRequest {
@@ -100,10 +118,19 @@ export interface Lead {
   id: string;
   status: string;
   created_at: Timestamp | null;
+  /** Original lead source label exactly as captured/imported. */
   source: string;
+  /** Canonical source used for reporting/filtering while preserving `source`. */
+  source_normalized?: string;
   raw_data: LeadRawData;
   /** UID of the user who created/owns this lead. Used by channel_partner scoping. */
   owner_uid?: string | null;
+  /** Normalized keys used by Phase 2 duplicate detection / merge workflows. */
+  duplicate_keys?: {
+    phones: string[];
+    email: string | null;
+    name: string;
+  };
   ai_audit?: AIAudit;
   ai_audit_complete?: boolean;
   suggested_plot?: string | null;
@@ -116,6 +143,8 @@ export interface Lead {
   site_visits?: SiteVisit[];
   /** Callback requests */
   callback_requests?: CallbackRequest[];
+  /** Structured objections blocking this buyer from moving forward. */
+  objections?: LeadObjection[];
   /** Properties the lead is interested in (manual tags + auto-matches) */
   interested_properties?: InterestedProperty[];
   /** Project IDs the user manually removed from auto-match — prevents re-adding */
@@ -126,6 +155,17 @@ export interface Lead {
   card_color?: string;
   /** The unit booked when this lead moves to the Booked lane. */
   booked_unit?: BookedUnit | null;
+  /** Duplicate lead document ids that were merged into this primary lead. */
+  merged_from?: string[];
+  merged_at?: string;
+  /** Soft-archive metadata. Archived leads are hidden from active workflows. */
+  archived_at?: Timestamp | null;
+  archived_at_iso?: string;
+  archived_by?: string;
+  archived_by_uid?: string;
+  archive_reason?: string;
+  archive_kind?: 'manual' | 'merged';
+  merged_into?: string;
   /** UTM campaign tracking from ad platforms */
   utm?: {
     source: string;

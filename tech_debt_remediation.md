@@ -208,6 +208,37 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
 
+### 2026-04-30 20:00 IST - Current Dev Baseline Checkpoint
+
+- Action: Prepare a single reviewed baseline checkpoint for the current CRM dev state before deeper tech-debt remediation.
+- Reason: The worktree contains the accumulated feature, security, UAT, backup/export, WhatsApp foundation, dashboard, RBAC, and documentation work that has been built and tested during the current development cycle. Deeper cleanup should start from a pushed baseline instead of leaving this broad known state uncommitted.
+- Scope:
+  - Next.js app pages, API routes, shared components, contexts, CRM utilities, Firestore/Storage rules, tests, scripts, and docs currently present in the working tree.
+  - Firebase/PWA/deployment support files already created for the dev environment.
+  - Python Cloud Function source updates and the source-normalization test.
+- Explicit exclusions:
+  - Generated `.next/` build output is ignored and not staged.
+  - Generated `CRM/elite-build-dashboard/firestore-debug.log` from rules testing was removed locally before staging.
+  - No production deployment, domain change, GCP resource change, or WhatsApp Meta configuration is being performed by this checkpoint.
+- Validation completed before staging:
+  - `npm run test` passed: 25 test files, 453 tests.
+  - `npm run test:rules` passed: 10 test files, 340 tests.
+  - `npx tsc --noEmit` passed.
+  - `npm run build` passed.
+  - `npm run lint` passed with 51 warnings and 0 errors. The warnings are tracked under `LINT-001`, `IMG-001`, and `TYPE-001`.
+- Files changed:
+  - Baseline source/test/rules/scripts/docs files listed by the final staged diff.
+  - `tech_debt_remediation.md`
+- Risk:
+  - Medium due to the breadth of already-developed CRM changes, but the checkpoint is intentionally a baseline commit rather than a behavioral cleanup.
+- Next validation before commit:
+  - `git diff --cached --check`
+  - Review staged status and staged stat output.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree

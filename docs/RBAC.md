@@ -18,3 +18,10 @@ Admin vs SuperAdmin boundary. Only SuperAdmin can create/delete users and promot
 
 Spelling and Grammer correction assistance in Notes section is not up to the mark. Once the sales associate or anyone for that matter adds their comments and clicks on Polish. I wan't the Gemini Model to rephrase, make it a meaningful sentence. This is to ensure we do not have spelling and grammatical mistakes and the gemini model could use these notes to understand the sentiment of the lead.
 
+## Current implementation notes
+
+- Sales Executive lead access is now intentionally narrower than the early wishlist above: Sales Execs can see leads assigned to their UID and unassigned non-Channel-Partner leads. They cannot see leads assigned to Super Admin, Admin, another Sales Exec, or Channel Partner.
+- Channel Partner leads are private to the partner, Admin, and Super Admin unless explicitly assigned into another workflow later.
+- Channel Partner bulk upload remains disabled for the current release cycle; manual lead creation is allowed and self-assigns to the partner.
+- Full WhatsApp Inbox is Admin/Super Admin only until a scoped Sales Exec inbox is built.
+- Admin can onboard non-Super-Admin pending users, but Super Admin remains the only role that can change roles, delete users, or promote to Super Admin.

@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Timestamp } from 'firebase/firestore';
 import {
   computeMarketingMetrics,
+  computeMarketingTimeSeries,
   computeInternalMetrics,
   computeTimeSeries,
   computeLeaderboard,
@@ -97,10 +98,10 @@ describe('computeMarketingMetrics', () => {
     expect(result.sourceBreakdown).toEqual([]);
   });
 
-  it('filters leads to only those whose source is in team.sources', () => {
+  it('filters leads to those whose normalized source is in team.sources', () => {
     const leads = [
       makeLead({ id: 'a', source: 'Meta Ads' }),
-      makeLead({ id: 'b', source: 'Instagram' }),
+      makeLead({ id: 'b', source: 'Instagram Ads' }),
       makeLead({ id: 'c', source: 'Google Ads' }),
       makeLead({ id: 'd', source: 'Organic' }),
     ];
@@ -160,17 +161,16 @@ describe('computeMarketingMetrics', () => {
     expect(result.leadQualityScore).toBe(50); // 1 high / 2 audited
   });
 
-  it('groups source breakdown and sorts descending by count', () => {
+  it('groups normalized source breakdown and sorts descending by count', () => {
     const leads = [
       makeLead({ id: 'a', source: 'Meta Ads' }),
-      makeLead({ id: 'b', source: 'Meta Ads' }),
-      makeLead({ id: 'c', source: 'Meta Ads' }),
-      makeLead({ id: 'd', source: 'Instagram' }),
+      makeLead({ id: 'b', source: 'FB Lead' }),
+      makeLead({ id: 'c', source: 'Facebook' }),
+      makeLead({ id: 'd', source: 'Instagram Ads' }),
     ];
     const result = computeMarketingMetrics(leads, team);
     expect(result.sourceBreakdown).toEqual([
-      { name: 'Meta Ads', value: 3 },
-      { name: 'Instagram', value: 1 },
+      { name: 'Meta Ads', value: 4 },
     ]);
   });
 
@@ -208,6 +208,60 @@ describe('computeMarketingMetrics', () => {
   });
 });
 
+describe('computeMarketingTimeSeries', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-20T12:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const team: MarketingTeam = {
+    id: 't1',
+    name: 'Paid Social',
+    sources: ['Meta Ads'],
+    monthly_spend: 120_000,
+    active: true,
+    created_at: null,
+  };
+
+  it('builds monthly marketing conversion buckets from team source leads', () => {
+    const leads = [
+      makeLead({
+        id: 'closed',
+        source: 'Meta Ads',
+        status: 'Closed',
+        created_at: ts(new Date('2026-04-01T10:00:00Z')),
+        lane_moved_at: ts(new Date('2026-04-18T10:00:00Z')),
+        raw: { budget: 1_200_000 },
+      }),
+      makeLead({
+        id: 'visit',
+        source: 'Meta Ads',
+        status: 'Site Visit',
+        created_at: ts(new Date('2026-04-10T10:00:00Z')),
+      }),
+      makeLead({
+        id: 'ignored',
+        source: 'Google Ads',
+        status: 'Closed',
+        created_at: ts(new Date('2026-04-10T10:00:00Z')),
+        raw: { budget: 99_000_000 },
+      }),
+    ];
+
+    const result = computeMarketingTimeSeries(leads, team, 'monthly');
+    const april = result.find(point => point.label === 'Apr 26');
+
+    expect(april).toMatchObject({
+      leads: 2,
+      siteVisits: 2,
+      closedDeals: 1,
+    });
+  });
+});
+
 /* ==================== computeInternalMetrics ==================== */
 
 describe('computeInternalMetrics', () => {
@@ -221,6 +275,19 @@ describe('computeInternalMetrics', () => {
 
   it('handles an empty lead list gracefully', () => {
     const result = computeInternalMetrics([], []);
+    expect(result.vitalStats).toEqual({
+      totalLeads: 0,
+      openLeads: 0,
+      unassignedLeads: 0,
+      hotLeads: 0,
+      scheduledSiteVisits: 0,
+      expectedBookings: 0,
+      forecastRevenue: 0,
+      blockedRevenue: 0,
+      marketingSpend: 0,
+      roiMultiple: 0,
+      netRoiPercent: 0,
+    });
     expect(result.speedToLeadMins).toBe(0);
     expect(result.leadToSVRatio).toBe(0);
     expect(result.svToBookingRatio).toBe(0);
@@ -231,6 +298,63 @@ describe('computeInternalMetrics', () => {
     expect(result.callsThisWeek).toBe(0);
     expect(result.avgTalkTimeMins).toBe(0);
     expect(result.agingLeads).toEqual([]);
+  });
+
+  it('computes leadership vital stats from open pipeline and AI signals', () => {
+    const futureVisit = {
+      id: 'v1',
+      scheduled_at: '2026-04-22T10:00:00.000Z',
+      location: 'Rare Earth',
+      notes: '',
+      created_at: '2026-04-20T09:00:00.000Z',
+      reminder_on_agreement: false,
+      reminder_day_before: false,
+      reminder_morning_of: false,
+      status: 'scheduled' as const,
+    };
+    const leads = [
+      makeLead({
+        id: 'hot',
+        status: 'Site Visit',
+        assigned_to: 'u1',
+        raw: { budget: 10_000_000, plan_to_buy: 'Immediate' },
+        ai_audit: { intent: 'Investment', urgency: 'High' },
+        site_visits: [futureVisit],
+        interested_properties: [{
+          projectId: 'p1',
+          projectName: 'Rare Earth',
+          location: 'Mysore',
+          propertyType: 'Plotted Land',
+          tagged_at: iso(new Date()),
+          tagged_by: 'u1',
+          matchScore: 92,
+        }],
+        activity_log: [call(new Date('2026-04-20T09:30:00Z'))],
+      }),
+      makeLead({
+        id: 'blocked',
+        status: 'Nurturing',
+        assigned_to: null,
+        raw: { budget: 5_000_000 },
+        objections: ['price'],
+      }),
+      makeLead({ id: 'closed', status: 'Closed', raw: { budget: 9_000_000 } }),
+      makeLead({ id: 'lost', status: 'Rejected', raw: { budget: 7_000_000 } }),
+    ];
+
+    const result = computeInternalMetrics(leads, [makeUser({ uid: 'u1' })], undefined, 100_000);
+
+    expect(result.vitalStats.totalLeads).toBe(4);
+    expect(result.vitalStats.openLeads).toBe(2);
+    expect(result.vitalStats.unassignedLeads).toBe(1);
+    expect(result.vitalStats.hotLeads).toBe(1);
+    expect(result.vitalStats.scheduledSiteVisits).toBe(1);
+    expect(result.vitalStats.expectedBookings).toBe(0.5);
+    expect(result.vitalStats.forecastRevenue).toBe(4_675_000);
+    expect(result.vitalStats.blockedRevenue).toBe(5_000_000);
+    expect(result.vitalStats.marketingSpend).toBe(100_000);
+    expect(result.vitalStats.roiMultiple).toBe(90);
+    expect(result.vitalStats.netRoiPercent).toBe(8900);
   });
 
   it('scopes to a single user when filterUid is provided', () => {

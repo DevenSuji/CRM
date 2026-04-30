@@ -73,21 +73,7 @@ Is this CRM responsive?
 
 Will this CRM work on an android phone or apple phone over the browser?
 
-AIzaSyCQofj-RgOTeZFR4B8L2pft6nBtWVQQqsU
-
-curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent" \
-  -H 'Content-Type: application/json' \
-  -H 'X-goog-api-key: AIzaSyCQofj-RgOTeZFR4B8L2pft6nBtWVQQqsU' \
-  -X POST \
-  -d '{
-    "contents": [
-      {
-        "parts": [
-          {
-            "text": "Explain how AI works in a few words"
-          }
-        ]
-      }
+Gemini API key redacted. Do not commit API keys or curl examples containing live credentials.
     ]
   }'
 

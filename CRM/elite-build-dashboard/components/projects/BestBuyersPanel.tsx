@@ -1,5 +1,6 @@
 "use client";
 
+import Link from 'next/link';
 import { Download, Phone, Target, Clock3, CircleDot } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatPrice } from '@/lib/utils/formatPrice';
@@ -50,9 +51,10 @@ export function BestBuyersPanel({
       ) : (
         <div className={`mt-5 grid gap-3 ${compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-2'}`}>
           {buyers.map((buyer, index) => (
-            <div
+            <Link
               key={buyer.leadId}
-              className="rounded-2xl border border-mn-border/50 bg-mn-card/75 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.06)]"
+              href={`/?leadId=${encodeURIComponent(buyer.leadId)}`}
+              className="block rounded-2xl border border-mn-border/50 bg-mn-card/75 p-4 text-left shadow-[0_8px_24px_rgba(15,23,42,0.06)] transition-all hover:-translate-y-0.5 hover:border-mn-input-focus/40 hover:bg-mn-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mn-ring"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -126,7 +128,7 @@ export function BestBuyersPanel({
                   </p>
                 )}
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}

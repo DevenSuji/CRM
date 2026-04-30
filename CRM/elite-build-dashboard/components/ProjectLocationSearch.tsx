@@ -1,7 +1,5 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { useState, useRef, useEffect } from 'react';
 import { Project } from '@/lib/types/project';
 import { Search, Building2, MapPin } from 'lucide-react';
 
@@ -10,32 +8,16 @@ interface ProjectLocationSearchProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  projects: Project[];
 }
 
-export function ProjectLocationSearch({ label, value, onChange, placeholder }: ProjectLocationSearchProps) {
+export function ProjectLocationSearch({ label, value, onChange, placeholder, projects }: ProjectLocationSearchProps) {
   const [searchQuery, setSearchQuery] = useState(value);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Sync local state when value prop changes externally
   useEffect(() => { setSearchQuery(value); }, [value]);
-
-  const loadProjects = useCallback(async () => {
-    if (loaded) return;
-    setLoading(true);
-    try {
-      const snap = await getDocs(query(collection(db, 'projects'), orderBy('created_at', 'desc')));
-      setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() } as Project)));
-      setLoaded(true);
-    } catch (err) {
-      console.error('Failed to load projects:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [loaded]);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -83,7 +65,7 @@ export function ProjectLocationSearch({ label, value, onChange, placeholder }: P
           type="text"
           value={searchQuery}
           onChange={e => handleInputChange(e.target.value)}
-          onFocus={() => { loadProjects(); setShowDropdown(true); }}
+          onFocus={() => setShowDropdown(true)}
           placeholder={placeholder || 'Search projects by name or location...'}
           className="w-full pl-9 pr-4 py-2.5 bg-mn-input-bg border border-mn-input-border rounded-xl text-sm text-mn-text placeholder:text-mn-text-muted/50 focus:outline-none focus:border-mn-input-focus"
         />
@@ -91,9 +73,7 @@ export function ProjectLocationSearch({ label, value, onChange, placeholder }: P
 
       {showDropdown && (
         <div className="absolute z-50 w-full mt-1 bg-mn-card border border-mn-border rounded-xl shadow-xl max-h-[200px] overflow-y-auto">
-          {loading ? (
-            <div className="px-4 py-3 text-xs text-mn-text-muted animate-pulse">Loading projects...</div>
-          ) : filtered.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="px-4 py-3 text-xs text-mn-text-muted">No matching projects found.</div>
           ) : (
             filtered.map(project => (
