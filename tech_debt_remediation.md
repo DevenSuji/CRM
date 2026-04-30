@@ -186,6 +186,28 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
 
+### 2026-04-30 19:56 IST - Lint Snapshot After Safe Cleanups
+
+- Action: Ran full lint after the safe generated-artifact/import/comment cleanups.
+- Result:
+  - `npm run lint` passed with warnings only.
+  - Warning count is now 51.
+  - Earlier Security Pass 2 validation had 57 warnings, so the tiny cleanups removed 6 lint warnings without behavior changes.
+- Current decision:
+  - Do not continue blindly through the remaining warnings.
+  - Many remaining warnings are inside files that already have large uncommitted feature/security changes; staging those files would risk bundling unrelated work into tech-debt commits.
+  - Image warnings require UI/runtime review because replacing `<img>` with Next `<Image>` can affect sizing, remote image policy, and branded asset behavior.
+  - `any` type warnings require type-shape review, not mechanical edits.
+- Files changed:
+  - `tech_debt_remediation.md`
+- Validation:
+  - `npm run lint` passed with 51 warnings.
+  - generated-artifact scan returned no `.DS_Store`, `__pycache__`, `.pyc`, `.pyo`, or Firebase debug log files.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -313,3 +335,45 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - Remove only the unused suppression comment.
 - Risk:
   - Very low. Comment-only change.
+
+### LINT-001 - Remaining Lint Warning Categories
+
+- Status: `Deferred`
+- Type: lint debt triage
+- Evidence collected:
+  - Full lint currently reports 51 warnings and 0 errors.
+  - Remaining categories:
+    - unused imports in already-dirty large files: `app/admin/page.tsx`, `app/page.tsx`, `components/ui/MultiImageUpload.tsx`
+    - `<img>` optimization warnings across branding/image-heavy UI
+    - `no-explicit-any` warnings in dashboard/projects/upload/location types
+    - one `set-state-in-effect` warning in `lib/context/ThemeContext.tsx`
+- Current decision:
+  - Defer broad lint cleanup until the large feature/security changes are committed or reviewed.
+  - Do not alter image rendering or type models mechanically before production UAT.
+- Risk:
+  - Medium if done mechanically. These files are user-facing or already carry unrelated uncommitted changes.
+
+### IMG-001 - Next `<img>` Warnings
+
+- Status: `Needs Investigation`
+- Type: UI/performance debt
+- Evidence collected:
+  - Lint reports multiple `@next/next/no-img-element` warnings.
+  - Affected areas include login branding, project/gallery images, uploads, image lightbox, sidebar branding, and search result thumbnails.
+- Current decision:
+  - Do not convert now. These changes can affect visual layout, allowed remote domains, object-fit behavior, and branding asset rendering.
+  - Handle as a separate UI/performance pass with screenshot checks.
+- Risk:
+  - Medium. Image rendering changes are visible and can regress layout.
+
+### TYPE-001 - `any` Type Warnings
+
+- Status: `Needs Investigation`
+- Type: typing debt
+- Evidence collected:
+  - Lint reports `no-explicit-any` in dashboard metrics, project dynamic schemas, image upload, location autocomplete, property matching, and inventory/project field maps.
+- Current decision:
+  - Do not replace `any` mechanically. Several are modeling dynamic CRM/project schema fields.
+  - Handle in focused type-model slices with tests.
+- Risk:
+  - Medium. Incorrect narrowing can break dynamic field flows.
