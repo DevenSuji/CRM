@@ -286,9 +286,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `npm run build` passed.
   - `git diff --check -- CRM/elite-build-dashboard/components/ui/EmptyState.tsx tech_debt_remediation.md` passed.
 - Commit:
-  - Pending.
+  - `781764c chore: remove unused EmptyState component`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
