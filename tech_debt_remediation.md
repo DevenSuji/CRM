@@ -114,6 +114,31 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
 
+### 2026-04-30 19:43 IST - CODE-002 Lead Detail Popover Unused Imports
+
+- Action: Remove unused `lucide-react` imports from `LeadDetailPopover`.
+- Reason: Lint reports dead imports. Removing unused imports is behavior-neutral because the symbols are never referenced in JSX or code.
+- Evidence:
+  - `git status --short -- CRM/elite-build-dashboard/components/LeadDetailPopover.tsx` returned no pre-existing dirty state.
+  - `npx eslint components/LeadDetailPopover.tsx` reported:
+    - `Briefcase` unused
+    - `Calendar` unused
+    - `MessageSquare` unused
+  - `rg -n "Briefcase|Calendar|MessageSquare|LeadDetailPopover" ...` showed those three symbols only in the import line.
+  - `LeadDetailPopover` itself is still used by `components/KanbanCard.tsx`.
+- Files changed:
+  - `CRM/elite-build-dashboard/components/LeadDetailPopover.tsx`
+  - `tech_debt_remediation.md`
+- Risk: very low. Import-only cleanup in a previously clean file.
+- Validation:
+  - `npx eslint components/LeadDetailPopover.tsx` passed with no warnings.
+  - `npx tsc --noEmit` passed.
+  - `git diff --check -- tech_debt_remediation.md CRM/elite-build-dashboard/components/LeadDetailPopover.tsx` passed.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -199,3 +224,17 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - Do not remove now. It still has test coverage attached, and deleting it safely requires either migrating those tests to the server route or explicitly retiring the legacy behavior.
 - Risk:
   - Medium-high. Auth bootstrap and pending-user migration are sensitive paths.
+
+### CODE-002 - Unused Imports In `LeadDetailPopover`
+
+- Status: `Safe To Refactor`
+- Type: import cleanup
+- Evidence collected:
+  - `components/LeadDetailPopover.tsx` had no pre-existing dirty state.
+  - ESLint reports `Briefcase`, `Calendar`, and `MessageSquare` as unused.
+  - Text search confirms those symbols are not referenced outside the import statement.
+  - The component remains referenced by `components/KanbanCard.tsx`.
+- Planned remediation:
+  - Remove only the unused imports.
+- Risk:
+  - Very low. No JSX or behavior changes.

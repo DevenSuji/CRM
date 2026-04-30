@@ -2,7 +2,7 @@
 import { Lead } from '@/lib/types/lead';
 import { Badge } from '@/components/ui/Badge';
 import { formatPrice } from '@/lib/utils/formatPrice';
-import { Phone, Mail, MapPin, Briefcase, Calendar, MessageSquare, Target, Megaphone, Building2 } from 'lucide-react';
+import { Phone, Mail, MapPin, Target, Megaphone, Building2 } from 'lucide-react';
 
 interface LeadDetailPopoverProps {
   lead: Lead;
