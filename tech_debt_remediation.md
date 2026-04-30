@@ -204,9 +204,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `npm run lint` passed with 51 warnings.
   - generated-artifact scan returned no `.DS_Store`, `__pycache__`, `.pyc`, `.pyo`, or Firebase debug log files.
 - Commit:
-  - Pending.
+  - `70ff070 docs: record lint debt snapshot`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
