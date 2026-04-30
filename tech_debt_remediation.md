@@ -54,13 +54,12 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `tech_debt_remediation.md`
 - Risk: Documentation-only. No runtime impact.
 - Validation:
-  - Pending commit/push of ledger-only change.
+  - `git diff --check -- tech_debt_remediation.md` passed.
 - Commit:
-  - Pending.
+  - `c01cb4f docs: add tech debt remediation ledger`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 
 ## Findings Register
 
 No remediation findings have been accepted yet.
-
