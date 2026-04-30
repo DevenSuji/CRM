@@ -324,6 +324,35 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
 
+### 2026-04-30 20:35 IST - DOC-003 Refresh Root README
+
+- Action: Rewrote the root `README.md` to match the current CRM development baseline.
+- Reason: The previous README still described old app routes, an older three-role RBAC model, older deployment commands, and stale project IDs.
+- Evidence:
+  - `README.md` previously described `app/inventory/` and `app/admin/projects/` as active app paths.
+  - `README.md` previously described only `admin`, `sales_exec`, and `viewer` roles.
+  - Current route scan from the discovery pass confirmed `/tasks`, `/whatsapp`, `/projects`, `/dashboard`, `/admin`, `/login`, and `/coming-soon` as current app routes.
+  - `CRM/elite-build-dashboard/package.json` exposes the guarded operational scripts `backup:firestore`, `backup:verify`, `deploy:dev`, and `deploy:dev:dry-run`.
+  - `CRM/elite-build-dashboard/scripts/deploy-cloud-run.mjs` targets dev project `elite-build-infra-tech-dev`, service `elite-build-crm-dev`, and region `asia-south1`.
+- Changes made:
+  - Updated current dev project, Cloud Run service, region, and dev app URL.
+  - Replaced stale route/project structure with the current Next.js app route layout.
+  - Added current RBAC summary for Super Admin, Admin, Sales Exec, Channel Partner, Digital Marketing, Viewer, HR, and Payroll/Finance.
+  - Added dashboard clutter guardrail: dashboard is for C-suite stats and graphs, execution work belongs elsewhere.
+  - Documented validation commands, guarded dev deployment, rules deployment, backup/export readiness, WhatsApp parked status, and guarded manual cleanup utilities.
+- Files changed:
+  - `README.md`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - None. Documentation-only change.
+- Validation:
+  - `git diff --check -- README.md` passed before this ledger entry.
+  - `git diff --check -- README.md tech_debt_remediation.md` passed.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -562,14 +591,15 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 
 ### DOC-003 - Root README Is Stale Against Current App Shape
 
-- Status: `Needs Investigation`
+- Status: `Refactored`
 - Type: documentation debt
 - Evidence collected:
   - `README.md` still describes `app/inventory/` and `app/admin/projects/`, but current inventory/project workflows live primarily under `/projects`, and those directories are empty locally.
   - `README.md` describes older role/security summaries and does not reflect the newer roles and role-view boundaries added during Security Audit Pass 2.
   - Current route scan shows `/tasks` and `/whatsapp` exist, but the README structure section does not describe them.
 - Current decision:
-  - Do not rewrite as part of code cleanup. Update README in a documentation pass after role-view UAT stabilizes.
+  - README has been refreshed to reflect the current dev baseline and operational guardrails.
+  - Revisit after final production deployment because production project IDs, domain mapping, and root account will intentionally differ from dev.
 - Risk:
   - Low runtime risk, medium operational risk because stale setup docs can mislead deployment/UAT.
 
