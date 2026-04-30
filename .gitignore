@@ -1,6 +1,13 @@
 .DS_Store
 *.swp
+
+# Python generated files
+__pycache__/
+*.py[cod]
+
 CRM/elite-build-dashboard/.env.local
+backups/
+CRM/elite-build-dashboard/backups/
 
 # Local-only backup of the pre-un-submodule inner .git (2026-04-21).
 # Not committed — kept on disk for recovery only.

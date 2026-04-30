@@ -60,6 +60,56 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
 
+### 2026-04-30 19:31 IST - GEN-001 Python Bytecode Cleanup
+
+- Action: Removed generated Python bytecode from source control and added ignore rules.
+- Reason: `.pyc` and `__pycache__/` files are generated artifacts, not deployable source. Keeping them in git creates noisy diffs and can accidentally preserve local interpreter output.
+- Evidence:
+  - Tracked generated file found: `CRM/functions/lead_ingestion_webhook/__pycache__/main.cpython-313.pyc`.
+  - Local generated cache file found: `CRM/functions/lead_ingestion_webhook/__pycache__/test_source_normalization.cpython-313.pyc`.
+  - Source files remain:
+    - `CRM/functions/lead_ingestion_webhook/main.py`
+    - `CRM/functions/lead_ingestion_webhook/test_source_normalization.py`
+- Files changed:
+  - `.gitignore`
+  - `CRM/functions/lead_ingestion_webhook/__pycache__/main.cpython-313.pyc`
+  - `tech_debt_remediation.md`
+- Files removed from local working tree but not committed because they were untracked/generated:
+  - `CRM/functions/lead_ingestion_webhook/__pycache__/test_source_normalization.cpython-313.pyc`
+- Validation:
+  - `python3 -m compileall -q CRM/functions/lead_ingestion_webhook/main.py CRM/functions/lead_ingestion_webhook/test_source_normalization.py` passed.
+  - `cd CRM/functions/lead_ingestion_webhook && python3 test_source_normalization.py` passed: 2 tests.
+  - Regenerated `__pycache__/` files from validation were removed again.
+  - Final `find CRM/functions/lead_ingestion_webhook \( -path '*/__pycache__' -o -name '*.pyc' -o -name '*.pyo' \) -print` expected to return no files before commit.
+  - `git diff --check` pending before commit.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+
 ## Findings Register
 
-No remediation findings have been accepted yet.
+### GEN-001 - Python Bytecode Cache In Source Tree
+
+- Status: `Safe To Remove`
+- Type: generated artifact cleanup
+- Evidence collected:
+  - `git ls-files | rg '(__pycache__|\\.pyc$|\\.pyo$|\\.DS_Store$|node_modules|\\.next/|dist/|build/|coverage/)'` found one tracked generated file:
+    - `CRM/functions/lead_ingestion_webhook/__pycache__/main.cpython-313.pyc`
+  - `find . ... -name '__pycache__' -o -name '*.pyc'` found generated local cache files:
+    - `CRM/functions/lead_ingestion_webhook/__pycache__/main.cpython-313.pyc`
+    - `CRM/functions/lead_ingestion_webhook/__pycache__/test_source_normalization.cpython-313.pyc`
+  - Python source files exist beside the cache files:
+    - `CRM/functions/lead_ingestion_webhook/main.py`
+    - `CRM/functions/lead_ingestion_webhook/test_source_normalization.py`
+  - Python `.pyc` files are generated interpreter bytecode and are not required by source deployments.
+  - Root `.gitignore` ignores `.DS_Store` and app build artifacts, but does not yet ignore `__pycache__/` or `*.pyc`.
+- Planned remediation:
+  - Remove tracked `.pyc` from git.
+  - Remove local untracked `.pyc` cache file.
+  - Add Python bytecode ignore rules to root `.gitignore`.
+- Risk: very low. No source/runtime code is being edited.
+- Validation plan:
+  - Confirm no `.pyc` files remain under the repo working tree.
+  - Run the Python unit test for `lead_ingestion_webhook` if local Python dependencies allow it.
+  - Run `git diff --check` for touched files.
