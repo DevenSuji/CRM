@@ -87,6 +87,33 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Push:
   - Pushed to `origin/codex/ui-modernization-20260424`.
 
+### 2026-04-30 19:40 IST - GEN-002 Local Generated Artifact Cleanup
+
+- Action: Removed local untracked generated files from the working tree.
+- Reason: `.DS_Store` files and Firebase emulator debug logs are machine-generated local artifacts. They should not be committed and add noise to future audits.
+- Evidence:
+  - `find . ... -name '.DS_Store' ... -name 'firestore-debug.log'` found:
+    - `./.DS_Store`
+    - `./CRM/.DS_Store`
+    - `./CRM/elite-build-dashboard/.DS_Store`
+    - `./CRM/elite-build-dashboard/public/.DS_Store`
+    - `./docs/.DS_Store`
+    - `./CRM/elite-build-dashboard/firestore-debug.log`
+  - `git ls-files | rg ...` found no tracked `.DS_Store` or debug log files.
+  - Root `.gitignore` already ignores `.DS_Store`; app `.gitignore` ignores Firebase emulator logs.
+- Files changed in git:
+  - `tech_debt_remediation.md`
+- Files removed locally only:
+  - the generated artifact files listed above.
+- Risk: very low. No source/runtime code edited.
+- Validation:
+  - Final `find . ... -name '.DS_Store' ... -name 'firestore-debug.log'` returned no files.
+  - `git diff --check -- tech_debt_remediation.md` passed.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -113,6 +140,19 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - Confirm no `.pyc` files remain under the repo working tree.
   - Run the Python unit test for `lead_ingestion_webhook` if local Python dependencies allow it.
   - Run `git diff --check` for touched files.
+
+### GEN-002 - Local `.DS_Store` And Firebase Debug Logs
+
+- Status: `Safe To Remove`
+- Type: generated artifact cleanup
+- Evidence collected:
+  - `find . ... -name '.DS_Store' ... -name 'firestore-debug.log'` found local generated artifacts.
+  - `git ls-files | rg ...` found no tracked matches.
+  - `.gitignore` coverage already exists for `.DS_Store` and Firebase emulator logs.
+- Planned remediation:
+  - Remove only the local untracked generated artifacts.
+  - Commit only this ledger update.
+- Risk: very low. No source/runtime code edited.
 
 ### AUD-001 - Empty Local Directories
 
