@@ -689,6 +689,36 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Live smoke:
   - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium tests.
 
+### 2026-05-01 08:25 IST - LINT-001 Property Match Update Typing
+
+- Action: Replaced the auto-match Firestore update payload type from `Record<string, any>` to a local `PropertyMatchLeadUpdate` type.
+- Reason: Remove the remaining `@typescript-eslint/no-explicit-any` warning in `usePropertyMatching` while preserving the exact fields written by auto-match.
+- Evidence collected:
+  - `npm run lint` reported one `no-explicit-any` warning at `lib/hooks/usePropertyMatching.ts:169`.
+  - The payload is built with `interested_properties: merged` and may conditionally set only `status`.
+  - `CRM/elite-build-dashboard/lib/types/lead.ts` defines `Lead.interested_properties` as `InterestedProperty[]` and `Lead.status` as `string`, so the local payload can be typed directly from those fields.
+- Files changed:
+  - `CRM/elite-build-dashboard/lib/hooks/usePropertyMatching.ts`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - None expected. This is a TypeScript-only payload annotation; the Firestore fields and values are unchanged.
+- Validation:
+  - `npm run lint -- lib/hooks/usePropertyMatching.ts` passed with no warnings.
+  - `npx tsc --noEmit` passed.
+  - `git diff --check -- CRM/elite-build-dashboard/lib/hooks/usePropertyMatching.ts tech_debt_remediation.md` passed.
+  - `npm run test` passed: 26 unit test files, 463 tests.
+  - `npm run lint` passed with 36 warnings and 0 errors.
+  - `npm run test:rules` passed: 9 rules test files, 328 tests.
+  - `npm run test:smoke` passed locally: 2 Chromium smoke tests.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+- Dev deploy:
+  - Pending.
+- Live smoke:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree

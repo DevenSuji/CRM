@@ -67,6 +67,11 @@ interface UsePropertyMatchingOptions {
   enabled: boolean;
 }
 
+type PropertyMatchLeadUpdate = {
+  interested_properties: InterestedProperty[];
+  status?: Lead['status'];
+};
+
 export function usePropertyMatching({
   leads,
   inventory,
@@ -166,7 +171,7 @@ export function usePropertyMatching({
         }
 
         // Write to Firestore
-        const updates: Record<string, any> = {
+        const updates: PropertyMatchLeadUpdate = {
           interested_properties: merged,
         };
 
