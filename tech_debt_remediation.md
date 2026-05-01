@@ -455,6 +455,39 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Live smoke:
   - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium smoke tests.
 
+### 2026-05-01 05:44 IST - LINT-001 Unused Imports Micro-Slice
+
+- Action: Removed only confirmed unused imports from three lint-warning files.
+- Reason: Reduce lint noise without touching JSX, runtime logic, auth, RBAC, data queries, or visual behavior.
+- Evidence collected:
+  - `npm run lint -- app/admin/page.tsx app/page.tsx components/ui/MultiImageUpload.tsx` reported unused imports only for `query`, `orderBy`, `ChevronDown`, `Phone`, `Mail`, `XCircle`, `Bell`, and `GripVertical`.
+  - `rg -n '\b(query|orderBy|ChevronDown)\b' CRM/elite-build-dashboard/app/admin/page.tsx` found those symbols only on import lines.
+  - `rg -n '\b(Phone|Mail|XCircle|Bell)\b' CRM/elite-build-dashboard/app/page.tsx` found `Phone` only as label/header text outside imports and found no runtime uses for the imported icon symbols.
+  - `rg -n '\bGripVertical\b' CRM/elite-build-dashboard/components/ui/MultiImageUpload.tsx` found the symbol only on the import line.
+  - Local Next.js App Router docs were checked before editing app TSX files, per the app-local `AGENTS.md` rule.
+- Files changed:
+  - `CRM/elite-build-dashboard/app/admin/page.tsx`
+  - `CRM/elite-build-dashboard/app/page.tsx`
+  - `CRM/elite-build-dashboard/components/ui/MultiImageUpload.tsx`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - None expected. Import cleanup only.
+- Validation:
+  - `npm run lint -- app/admin/page.tsx app/page.tsx components/ui/MultiImageUpload.tsx` passed with the confirmed unused-import warnings removed; remaining warnings are only deferred `<img>` and `any` categories.
+  - `git diff --check -- CRM/elite-build-dashboard/app/admin/page.tsx CRM/elite-build-dashboard/app/page.tsx CRM/elite-build-dashboard/components/ui/MultiImageUpload.tsx tech_debt_remediation.md` passed.
+  - `npx tsc --noEmit` passed.
+  - `npm run test` passed: 25 unit test files, 453 tests.
+  - `npm run lint` passed with 43 warnings and 0 errors.
+  - `npm run test:smoke` passed locally: 2 Chromium smoke tests.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+- Dev deploy:
+  - Pending.
+- Live smoke:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -585,17 +618,17 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 
 ### LINT-001 - Remaining Lint Warning Categories
 
-- Status: `Deferred`
+- Status: `Needs Investigation`
 - Type: lint debt triage
 - Evidence collected:
-  - Full lint currently reports 51 warnings and 0 errors.
+  - Full lint currently reports 43 warnings and 0 errors after the unused-import micro-slice.
   - Remaining categories:
-    - unused imports in already-dirty large files: `app/admin/page.tsx`, `app/page.tsx`, `components/ui/MultiImageUpload.tsx`
     - `<img>` optimization warnings across branding/image-heavy UI
     - `no-explicit-any` warnings in dashboard/projects/upload/location types
     - one `set-state-in-effect` warning in `lib/context/ThemeContext.tsx`
 - Current decision:
-  - Defer broad lint cleanup until the large feature/security changes are committed or reviewed.
+  - Unused import micro-slice completed for `app/admin/page.tsx`, `app/page.tsx`, and `components/ui/MultiImageUpload.tsx`.
+  - Defer broad lint cleanup until each remaining warning family can be handled as a focused, validated slice.
   - Do not alter image rendering or type models mechanically before production UAT.
 - Risk:
   - Medium if done mechanically. These files are user-facing or already carry unrelated uncommitted changes.

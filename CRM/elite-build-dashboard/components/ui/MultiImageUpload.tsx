@@ -2,7 +2,7 @@
 import { useState, useRef } from 'react';
 import { storage } from '@/lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { ImagePlus, X, Loader2, GripVertical } from 'lucide-react';
+import { ImagePlus, X, Loader2 } from 'lucide-react';
 
 interface MultiImageUploadProps {
   /** First image is hero; rest are gallery */

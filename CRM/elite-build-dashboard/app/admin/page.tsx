@@ -2,10 +2,10 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import {
-  collection, getDocs, query, orderBy, doc, setDoc, getDoc, updateDoc, deleteDoc, serverTimestamp,
+  collection, getDocs, doc, setDoc, getDoc, updateDoc, deleteDoc, serverTimestamp,
 } from 'firebase/firestore';
 import {
-  Plus, Trash2, Save, GripVertical, ChevronDown,
+  Plus, Trash2, Save, GripVertical,
   Settings, Palette, Users, MessageCircle, PhoneCall, CheckCircle, Clock,
   Shield, ShieldCheck, Eye, UserPlus, Mail, ImageIcon, SwatchBook, Megaphone,
   Sparkles, ExternalLink, Briefcase, Calculator, Handshake, Crown, PhoneForwarded,

@@ -4,9 +4,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { orderBy, addDoc, collection, Timestamp, doc, updateDoc, arrayUnion, arrayRemove, getDoc, getDocs, onSnapshot, query, where, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import {
-  LayoutDashboard, UserPlus, Phone, Mail, MapPin, Calendar, Target, Save,
-  Plus, PhoneCall, MessageSquare, Clock, CalendarPlus, CheckCircle, XCircle, Send,
-  Trash2, Bell, PhoneForwarded, AlarmClock, Upload, FileSpreadsheet, AlertTriangle,
+  LayoutDashboard, UserPlus, MapPin, Calendar, Target, Save,
+  Plus, PhoneCall, MessageSquare, Clock, CalendarPlus, CheckCircle, Send,
+  Trash2, PhoneForwarded, AlarmClock, Upload, FileSpreadsheet, AlertTriangle,
   Building2, SendHorizontal, X, Megaphone, Sparkles, Home,
   Maximize2, Minimize2, GitMerge, Search, RotateCcw,
 } from 'lucide-react';
