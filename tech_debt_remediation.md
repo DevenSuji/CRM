@@ -577,13 +577,16 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `npm run test:rules` passed: 9 rules test files, 328 tests.
   - `npm run test:smoke` passed locally: 2 Chromium smoke tests.
 - Commit:
-  - Pending.
+  - `028945b chore: remove legacy auth resolver`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 - Dev deploy:
-  - Pending.
+  - `npm run deploy:dev:dry-run` passed.
+  - `npm run deploy:dev` passed.
+  - Cloud Run revision `elite-build-crm-dev-00041-rur` was promoted to 100% traffic.
+  - Service URL: `https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app`.
 - Live smoke:
-  - Pending.
+  - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium smoke tests.
 
 ## Findings Register
 
