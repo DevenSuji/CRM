@@ -588,6 +588,37 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Live smoke:
   - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium smoke tests.
 
+### 2026-05-01 07:30 IST - LINT-001 Theme Context External Store
+
+- Action: Replaced the theme initialization `setState` inside `useEffect` with a `useSyncExternalStore` subscription around the persisted theme color.
+- Reason: Remove the `react-hooks/set-state-in-effect` lint warning while preserving current light/dark behavior and avoiding a hydration-time `localStorage` mismatch.
+- Evidence collected:
+  - `npm run lint -- lib/context/ThemeContext.tsx` reported one warning at `setActiveColor(stored)` inside the initial effect.
+  - `ThemeProvider` is mounted under `ClientProviders`, and theme consumers are `Sidebar` and `BrandingProvider`.
+  - The existing behavior renders `light` first, reads `localStorage` after hydration, applies the stored palette, and updates the toggle state.
+  - `useSyncExternalStore` keeps the server snapshot as `light`, reads the browser snapshot from `localStorage`, and updates same-tab changes through a custom event plus cross-tab changes through the browser `storage` event.
+- Files changed:
+  - `CRM/elite-build-dashboard/lib/context/ThemeContext.tsx`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - Low. Theme persistence and palette application are preserved; same-tab and cross-tab theme changes now flow through an explicit store notification instead of direct state mutation in an effect.
+- Validation:
+  - `npm run lint -- lib/context/ThemeContext.tsx` passed with no warnings.
+  - `npx tsc --noEmit` passed.
+  - `git diff --check -- CRM/elite-build-dashboard/lib/context/ThemeContext.tsx tech_debt_remediation.md` passed.
+  - `npm run test` passed: 26 unit test files, 463 tests.
+  - `npm run lint` passed with 42 warnings and 0 errors.
+  - `npm run test:rules` passed: 9 rules test files, 328 tests.
+  - `npm run test:smoke` passed locally: 2 Chromium smoke tests.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+- Dev deploy:
+  - Pending.
+- Live smoke:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -730,6 +761,7 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
     - one `set-state-in-effect` warning in `lib/context/ThemeContext.tsx`
 - Current decision:
   - Unused import micro-slice completed for `app/admin/page.tsx`, `app/page.tsx`, and `components/ui/MultiImageUpload.tsx`.
+  - Theme context `set-state-in-effect` warning addressed with an external-store theme subscription.
   - Defer broad lint cleanup until each remaining warning family can be handled as a focused, validated slice.
   - Do not alter image rendering or type models mechanically before production UAT.
 - Risk:

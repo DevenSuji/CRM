@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useCallback, useSyncExternalStore, ReactNode } from 'react';
 
 export const THEME_COLORS = [
   { id: 'light', hex: '#F4F4F2', label: 'Light', dark: false },
@@ -9,6 +9,7 @@ export const THEME_COLORS = [
 export type ThemeColorId = typeof THEME_COLORS[number]['id'];
 
 const STORAGE_KEY = 'crm_theme_color';
+const THEME_CHANGED_EVENT = 'crm_theme_color_changed';
 
 const PALETTES: Record<ThemeColorId, Record<string, string>> = {
   light: {
@@ -107,23 +108,48 @@ function applyPalette(colorId: ThemeColorId) {
   root.classList.toggle('dark', colorId === 'dark');
 }
 
+function isThemeColorId(value: string | null): value is ThemeColorId {
+  return THEME_COLORS.some(color => color.id === value);
+}
+
+function getStoredThemeColor(): ThemeColorId {
+  if (typeof window === 'undefined') return 'light';
+  const stored = window.localStorage.getItem(STORAGE_KEY);
+  return isThemeColorId(stored) ? stored : 'light';
+}
+
+function subscribeToThemeColor(onStoreChange: () => void) {
+  if (typeof window === 'undefined') return () => {};
+
+  const handleThemeChange = () => onStoreChange();
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY) onStoreChange();
+  };
+
+  window.addEventListener(THEME_CHANGED_EVENT, handleThemeChange);
+  window.addEventListener('storage', handleStorage);
+
+  return () => {
+    window.removeEventListener(THEME_CHANGED_EVENT, handleThemeChange);
+    window.removeEventListener('storage', handleStorage);
+  };
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [activeColor, setActiveColor] = useState<ThemeColorId>('light');
+  const activeColor = useSyncExternalStore(
+    subscribeToThemeColor,
+    getStoredThemeColor,
+    () => 'light' as ThemeColorId,
+  );
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as ThemeColorId | null;
-    if (stored && THEME_COLORS.some(color => color.id === stored)) {
-      setActiveColor(stored);
-      applyPalette(stored);
-      return;
-    }
-    applyPalette('light');
-  }, []);
+    applyPalette(activeColor);
+  }, [activeColor]);
 
   const setColor = useCallback((id: ThemeColorId) => {
-    setActiveColor(id);
-    localStorage.setItem(STORAGE_KEY, id);
+    window.localStorage.setItem(STORAGE_KEY, id);
     applyPalette(id);
+    window.dispatchEvent(new Event(THEME_CHANGED_EVENT));
   }, []);
 
   const isDark = THEME_COLORS.find(color => color.id === activeColor)?.dark ?? false;
