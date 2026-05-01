@@ -510,13 +510,16 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - `npx --yes firebase-tools@14 emulators:exec --only firestore,auth,storage --project elite-build-crm-test "npx vitest run --config vitest.rules.config.ts tests/rules/resolveCrmUser.test.ts"` passed: 1 file, 12 tests.
   - `npm run lint -- lib/auth/resolveCrmUser.ts app/api/auth/resolve-crm-user/route.ts lib/context/AuthContext.tsx tests/rules/resolveCrmUser.test.ts` passed with no warnings.
 - Commit:
-  - Pending.
+  - `bae44d1 docs: audit legacy auth resolver`
 - Push:
-  - Pending.
+  - Pushed to `origin/codex/ui-modernization-20260424`.
 - Dev deploy:
-  - Pending.
+  - `npm run deploy:dev:dry-run` passed.
+  - `npm run deploy:dev` passed.
+  - Cloud Run revision `elite-build-crm-dev-00037-caf` was promoted to 100% traffic.
+  - Service URL: `https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app`.
 - Live smoke:
-  - Pending.
+  - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium smoke tests.
 
 ## Findings Register
 
