@@ -491,6 +491,33 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Live smoke:
   - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium smoke tests.
 
+### 2026-05-01 06:03 IST - CODE-001 Legacy Auth Resolver Audit
+
+- Action: Audited the legacy browser auth resolver and made no runtime/code deletion.
+- Reason: Login, root-superadmin anti-lockout, pending-user migration, and first-user bootstrap are production-critical paths. The file is not runtime login code anymore, but it still carries focused executable coverage for those branches.
+- Evidence collected:
+  - `rg -n "resolveCrmUser|resolve-crm-user|ResolvedCrmUser|pending user|pending_user|pendingUsers|pending_users" CRM/elite-build-dashboard --glob '!node_modules/**' --glob '!.next/**' --glob '!coverage/**' --glob '!test-results/**'` found runtime login using `/api/auth/resolve-crm-user` from `lib/context/AuthContext.tsx`.
+  - The same scan found `lib/auth/resolveCrmUser.ts` imported only by `tests/rules/resolveCrmUser.test.ts`.
+  - `app/api/auth/resolve-crm-user/route.ts` is the authoritative runtime path: it verifies Firebase ID tokens, rate-limits resolution, uses the Admin SDK, migrates pending user docs in a transaction, and owns first-user/root bootstrap.
+  - `firestore.rules` intentionally blocks browser clients from creating real user docs or writing `_user_count`; pending profile creation is admin-scoped and real UID creation is server-owned.
+  - `tests/rules/resolveCrmUser.test.ts` explicitly runs the legacy resolver with security rules disabled because runtime migration is now server-owned.
+  - No route-level test currently replaces the legacy helper tests for root self-heal, pending-doc migration, first-user bootstrap, null-email handling, and no-profile denial.
+- Files changed:
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - None. Audit/log-only.
+- Validation:
+  - `npx --yes firebase-tools@14 emulators:exec --only firestore,auth,storage --project elite-build-crm-test "npx vitest run --config vitest.rules.config.ts tests/rules/resolveCrmUser.test.ts"` passed: 1 file, 12 tests.
+  - `npm run lint -- lib/auth/resolveCrmUser.ts app/api/auth/resolve-crm-user/route.ts lib/context/AuthContext.tsx tests/rules/resolveCrmUser.test.ts` passed with no warnings.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+- Dev deploy:
+  - Pending.
+- Live smoke:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -566,16 +593,19 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 
 ### CODE-001 - Legacy Browser Auth Resolver
 
-- Status: `Needs Investigation`
+- Status: `Deferred`
 - Type: possible legacy code
 - Evidence collected:
   - Runtime `AuthContext` uses `/api/auth/resolve-crm-user`.
   - `lib/auth/resolveCrmUser.ts` is still imported by `tests/rules/resolveCrmUser.test.ts`.
   - The file encodes legacy browser-side auth resolution behavior that now overlaps with the server route.
+  - The authoritative runtime route verifies Firebase ID tokens and performs privileged user creation/migration with the Admin SDK.
+  - The legacy helper is currently the only focused executable coverage for several auth-resolution branches.
 - Current decision:
-  - Do not remove now. It still has test coverage attached, and deleting it safely requires either migrating those tests to the server route or explicitly retiring the legacy behavior.
+  - Do not remove now. Keep it temporarily as an executable parity/spec harness until the Admin SDK route has equivalent route-level tests or the shared behavior is extracted into a server-safe testable module.
+  - Future remediation should either migrate these tests to `/api/auth/resolve-crm-user` route coverage or intentionally retire the legacy helper with an explicit replacement coverage plan.
 - Risk:
-  - Medium-high. Auth bootstrap and pending-user migration are sensitive paths.
+  - High if removed without replacement coverage. Auth bootstrap, root anti-lockout, and pending-user migration are sensitive paths.
 
 ### CODE-002 - Unused Imports In `LeadDetailPopover`
 
