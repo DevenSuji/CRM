@@ -656,6 +656,36 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Live smoke:
   - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium tests.
 
+### 2026-05-01 08:00 IST - LINT-001 Dashboard User Identifier Typing
+
+- Action: Added a typed `DashboardUser` helper for the internal dashboard user selector and removed the `(u as any).id` fallback casts.
+- Reason: Remove three `@typescript-eslint/no-explicit-any` warnings while preserving the existing `uid || id` identifier fallback used by Firestore keyed collection data.
+- Evidence collected:
+  - `npm run lint` reported `no-explicit-any` warnings at `components/dashboard/InternalDashboard.tsx:95`, `:112`, and `:112`.
+  - `CRM/elite-build-dashboard/lib/hooks/useFirestoreCollection.ts` maps Firestore docs to `{ id: d.id, ...d.data() }`, so dashboard user rows can legitimately carry a document `id`.
+  - `CRM/elite-build-dashboard/lib/utils/dashboardMetrics.ts` already uses the same `CRMUser & { id?: string }` shape and `uid || id` identifier fallback for dashboard metrics.
+- Files changed:
+  - `CRM/elite-build-dashboard/components/dashboard/InternalDashboard.tsx`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - Low. The selector still resolves users by `uid || id`; only the TypeScript shape changed.
+- Validation:
+  - `npm run lint -- components/dashboard/InternalDashboard.tsx` passed with no warnings.
+  - `npx tsc --noEmit` passed.
+  - `git diff --check -- CRM/elite-build-dashboard/components/dashboard/InternalDashboard.tsx tech_debt_remediation.md` passed.
+  - `npm run test` passed: 26 unit test files, 463 tests.
+  - `npm run lint` passed with 37 warnings and 0 errors.
+  - `npm run test:rules` passed: 9 rules test files, 328 tests.
+  - `npm run test:smoke` passed locally: 2 Chromium smoke tests.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+- Dev deploy:
+  - Pending.
+- Live smoke:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree

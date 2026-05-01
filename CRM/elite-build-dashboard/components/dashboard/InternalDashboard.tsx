@@ -30,7 +30,7 @@ const PERIOD_OPTIONS: { value: TimePeriod; label: string }[] = [
 
 interface Props {
   leads: Lead[];
-  users: CRMUser[];
+  users: DashboardUser[];
   inventory?: InventoryUnit[];
   marketingTeams?: MarketingTeam[];
   currentUid?: string;
@@ -40,6 +40,10 @@ interface Props {
   showRoi?: boolean;
   showDemandGap?: boolean;
 }
+
+type DashboardUser = CRMUser & { id?: string };
+
+const dashboardUserId = (user: DashboardUser): string => user.uid || user.id || '';
 
 export function InternalDashboard({
   leads,
@@ -92,7 +96,7 @@ export function InternalDashboard({
 
   const isTeamView = !effectiveSelectedUid;
   const selectedUserName = effectiveSelectedUid
-    ? salesUsers.find(u => (u.uid || (u as any).id) === effectiveSelectedUid)?.name
+    ? salesUsers.find(u => dashboardUserId(u) === effectiveSelectedUid)?.name
     : null;
 
   return (
@@ -109,7 +113,7 @@ export function InternalDashboard({
             >
               <option value="">All Team</option>
               {salesUsers.map(u => (
-                <option key={u.uid || (u as any).id} value={u.uid || (u as any).id}>
+                <option key={dashboardUserId(u)} value={dashboardUserId(u)}>
                   {u.name}
                 </option>
               ))}
