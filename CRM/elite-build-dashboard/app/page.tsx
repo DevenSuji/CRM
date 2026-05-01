@@ -53,6 +53,17 @@ import { buildStageMoveLog, getStageMoveReasonOptions, type StageMoveReasonCateg
 import { getLeadSourceNormalizationPatch, leadSourceLabel, normalizeLeadSource } from '@/lib/utils/leadSourceHygiene';
 import { filterLeadPageLeads, isChannelPartnerLead } from '@/lib/utils/leadVisibility';
 
+type LeadPropertyRemovalUpdate = {
+  interested_properties: InterestedProperty[];
+  dismissed_matches?: ReturnType<typeof arrayUnion>;
+};
+
+type PropertyDetailsProject = {
+  status?: Project['status'];
+  project_fields?: Project['project_fields'];
+  gallery?: Project['gallery'];
+};
+
 function useProjectScopedAvailableInventory(enabled: boolean, projects: Project[]) {
   const [snapshotState, setSnapshotState] = useState<{
     key: string;
@@ -1858,7 +1869,7 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, canDeleteLead = false
     const updated = interestedProperties.filter(p => p.projectId !== projectId);
     setInterestedProperties(updated);
     try {
-      const updateData: Record<string, any> = { interested_properties: updated };
+      const updateData: LeadPropertyRemovalUpdate = { interested_properties: updated };
       // If removing an auto-matched property, add to dismissed_matches so it won't re-appear
       if (removedProp?.tagged_by === 'system-match') {
         updateData.dismissed_matches = arrayUnion(projectId);
@@ -1893,11 +1904,11 @@ function LeadDetailModal({ lead, onClose, isAdmin = false, canDeleteLead = false
       if (!toPhone.startsWith('91') && toPhone.length === 10) toPhone = '91' + toPhone;
 
       // Fetch full project details for each tagged property
-      const projectDetails: { prop: InterestedProperty; project: any }[] = [];
+      const projectDetails: { prop: InterestedProperty; project: PropertyDetailsProject | null }[] = [];
       for (const prop of interestedProperties) {
         try {
           const projectSnap = await getDoc(doc(db, 'projects', prop.projectId));
-          projectDetails.push({ prop, project: projectSnap.exists() ? projectSnap.data() : null });
+          projectDetails.push({ prop, project: projectSnap.exists() ? projectSnap.data() as PropertyDetailsProject : null });
         } catch {
           projectDetails.push({ prop, project: null });
         }

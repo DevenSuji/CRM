@@ -722,6 +722,36 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Live smoke:
   - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium tests.
 
+### 2026-05-01 10:17 IST - LINT-001 Lead Page Update Payload Typing
+
+- Action: Added local typed payloads for lead property removal and WhatsApp property-detail project reads in `app/page.tsx`.
+- Reason: Remove the two remaining `@typescript-eslint/no-explicit-any` warnings in the main lead page without changing lead board behavior or WhatsApp message construction.
+- Evidence collected:
+  - `npm run lint` reported `no-explicit-any` warnings at `app/page.tsx:1861` and `app/page.tsx:1896`.
+  - The removal update writes `interested_properties` and conditionally `dismissed_matches: arrayUnion(projectId)`.
+  - The WhatsApp property-detail flow reads only project `status`, `project_fields`, and `gallery` from the fetched project document.
+- Files changed:
+  - `CRM/elite-build-dashboard/app/page.tsx`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - None expected. The Firestore write keys, project fetch, message text, and image send loop are unchanged.
+- Validation:
+  - `npm run lint -- app/page.tsx` passed with only the pre-existing `no-img-element` warning.
+  - `npx tsc --noEmit` passed.
+  - `git diff --check -- CRM/elite-build-dashboard/app/page.tsx tech_debt_remediation.md` passed.
+  - `npm run test` passed: 26 unit test files, 463 tests.
+  - `npm run lint` passed with 34 warnings and 0 errors.
+  - `npm run test:rules` passed: 9 rules test files, 328 tests.
+  - `npm run test:smoke` passed locally: 2 Chromium smoke tests.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+- Dev deploy:
+  - Pending.
+- Live smoke:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
