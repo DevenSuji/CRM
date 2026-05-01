@@ -554,6 +554,37 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Live smoke:
   - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium smoke tests.
 
+### 2026-05-01 07:02 IST - CODE-001 Remove Legacy Browser Auth Resolver
+
+- Action: Removed the legacy browser-side CRM user resolver and its legacy rules test.
+- Reason: Runtime login already uses the Admin SDK route, and equivalent route-level coverage now exists for the sensitive auth-resolution branches.
+- Evidence collected:
+  - `rg -n "resolveCrmUser|ROOT_SUPERADMIN_EMAIL|MinimalFirebaseUser|lib/auth/resolveCrmUser|resolveCrmUser\\.test" CRM/elite-build-dashboard --glob '!node_modules/**' --glob '!.next/**' --glob '!coverage/**' --glob '!test-results/**'` showed the helper was referenced only by `tests/rules/resolveCrmUser.test.ts`.
+  - `app/api/auth/resolve-crm-user/route.ts` remains the runtime auth resolution path.
+  - `tests/unit/resolveCrmUserRoute.test.ts` covers no token, invalid token, existing active user, inactive user, root-superadmin self-heal, pending-user migration, legacy mixed-case pending doc lookup, first-user bootstrap, no-profile denial, and missing-email denial.
+- Files changed:
+  - `CRM/elite-build-dashboard/lib/auth/resolveCrmUser.ts`
+  - `CRM/elite-build-dashboard/tests/rules/resolveCrmUser.test.ts`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - None expected. The removed helper was not imported by runtime code.
+- Validation:
+  - Post-delete reference scan found no remaining `resolveCrmUser`, `MinimalFirebaseUser`, `lib/auth/resolveCrmUser`, or `resolveCrmUser.test` references.
+  - `git diff --check -- CRM/elite-build-dashboard/lib/auth/resolveCrmUser.ts CRM/elite-build-dashboard/tests/rules/resolveCrmUser.test.ts tech_debt_remediation.md` passed.
+  - `npx tsc --noEmit` passed.
+  - `npm run test` passed: 26 unit test files, 463 tests.
+  - `npm run lint` passed with the existing 43 warnings and 0 errors.
+  - `npm run test:rules` passed: 9 rules test files, 328 tests.
+  - `npm run test:smoke` passed locally: 2 Chromium smoke tests.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+- Dev deploy:
+  - Pending.
+- Live smoke:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
@@ -629,7 +660,7 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 
 ### CODE-001 - Legacy Browser Auth Resolver
 
-- Status: `Safe To Remove`
+- Status: `Removed`
 - Type: possible legacy code
 - Evidence collected:
   - Runtime `AuthContext` uses `/api/auth/resolve-crm-user`.
@@ -638,9 +669,9 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
   - The authoritative runtime route verifies Firebase ID tokens and performs privileged user creation/migration with the Admin SDK.
   - Route-level tests now cover the real Admin SDK route for the critical branches previously covered only by the legacy helper.
 - Current decision:
-  - Do not remove in the same slice as adding replacement coverage. The next small remediation can remove `lib/auth/resolveCrmUser.ts` and `tests/rules/resolveCrmUser.test.ts`, then rerun unit/rules/build/lint/smoke/deploy validation.
+  - Removed after route-level replacement coverage was added and validated.
 - Risk:
-  - Medium if removed in a dedicated follow-up slice with the new route-level tests passing. Auth bootstrap, root anti-lockout, and pending-user migration are sensitive paths.
+  - Low after replacement coverage. Auth bootstrap, root anti-lockout, and pending-user migration remain sensitive paths, so the route-level tests must stay in place.
 
 ### CODE-002 - Unused Imports In `LeadDetailPopover`
 
