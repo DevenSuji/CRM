@@ -60,7 +60,7 @@ export function MultiImageUpload({
         urls.push(url);
       }
       onChange([...images, ...urls]);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Upload error:', err);
       setError('Upload failed. Check Storage permissions.');
     } finally {

@@ -76,7 +76,7 @@ export function ImageUpload({
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
       onChange(url);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Upload error:', err);
       setError('Upload failed. Check Storage permissions.');
     } finally {

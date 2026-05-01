@@ -622,6 +622,37 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Live smoke:
   - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium tests.
 
+### 2026-05-01 07:48 IST - LINT-001 Upload Catch Error Typing
+
+- Action: Replaced upload `catch (err: any)` annotations with `catch (err: unknown)` in the single-image and multi-image upload components.
+- Reason: Remove two `@typescript-eslint/no-explicit-any` warnings without changing upload behavior, Firebase Storage calls, UI rendering, or error messaging.
+- Evidence collected:
+  - `npm run lint` reported `no-explicit-any` warnings at `components/ui/ImageUpload.tsx:79` and `components/ui/MultiImageUpload.tsx:63`.
+  - Both catch blocks only pass the caught value to `console.error`, which accepts `unknown`; no property access or narrowing is required.
+  - The same files still contain `no-img-element` warnings, intentionally left untouched because image rendering changes need a separate visual QA pass.
+- Files changed:
+  - `CRM/elite-build-dashboard/components/ui/ImageUpload.tsx`
+  - `CRM/elite-build-dashboard/components/ui/MultiImageUpload.tsx`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - None expected. This is a TypeScript annotation-only cleanup for caught exceptions.
+- Validation:
+  - `npm run lint -- components/ui/ImageUpload.tsx components/ui/MultiImageUpload.tsx` passed with only the two pre-existing `no-img-element` warnings.
+  - `npx tsc --noEmit` passed.
+  - `git diff --check -- CRM/elite-build-dashboard/components/ui/ImageUpload.tsx CRM/elite-build-dashboard/components/ui/MultiImageUpload.tsx tech_debt_remediation.md` passed.
+  - `npm run test` passed: 26 unit test files, 463 tests.
+  - `npm run lint` passed with 40 warnings and 0 errors.
+  - `npm run test:rules` passed: 9 rules test files, 328 tests.
+  - `npm run test:smoke` passed locally: 2 Chromium smoke tests.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+- Dev deploy:
+  - Pending.
+- Live smoke:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree
