@@ -52,7 +52,7 @@ export function KanbanLane({ lane, leads, onClickLead, availableColors, slaConfi
 
       <div
         ref={setNodeRef}
-        className={`mn-lane-well flex-1 overflow-y-auto rounded-[1.45rem] px-2.5 pb-3 pt-2.5 transition-all ${hasLeads ? 'space-y-3' : 'flex items-center justify-center'} ${
+        className={`mn-lane-well flex-1 overflow-y-auto rounded-[1.45rem] transition-all ${fitToWindow ? 'px-2 pb-2 pt-2' : 'px-2.5 pb-3 pt-2.5'} ${hasLeads ? (fitToWindow ? 'space-y-2' : 'space-y-3') : 'flex items-center justify-center'} ${
           isOver
             ? 'bg-mn-h2/10 ring-2 ring-mn-ring'
             : ''
@@ -67,6 +67,7 @@ export function KanbanLane({ lane, leads, onClickLead, availableColors, slaConfi
               availableColors={availableColors}
               slaConfig={slaConfig}
               assigneeName={lead.assigned_to ? assigneeNameByUid[lead.assigned_to] : undefined}
+              fitToWindow={fitToWindow}
             />
           ))}
         </SortableContext>

@@ -19,16 +19,19 @@ interface KanbanCardProps {
   availableColors?: string[];
   slaConfig?: SLAConfig;
   assigneeName?: string;
+  fitToWindow?: boolean;
 }
 
 function ColorPicker({
   leadId,
   currentColor,
   colors,
+  compact = false,
 }: {
   leadId: string;
   currentColor?: string;
   colors: string[];
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
@@ -94,11 +97,11 @@ function ColorPicker({
       <button
         ref={buttonRef}
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className={`flex h-5 w-5 items-center justify-center rounded-full border shadow-sm transition-all hover:scale-105 ${
+        className={`flex items-center justify-center rounded-full border shadow-sm transition-all hover:scale-105 ${
           currentColor
             ? 'border-white/35 bg-white/20'
             : 'border-mn-border/60 bg-mn-card/90 text-mn-text-muted hover:border-mn-h2/45 hover:text-mn-h2'
-        }`}
+        } ${compact ? 'h-4 w-4' : 'h-5 w-5'}`}
         style={currentColor ? {
           color: iconColor,
           backgroundColor: iconColor === '#FFFFFF' ? 'rgba(255,255,255,0.18)' : 'rgba(5,14,60,0.12)',
@@ -108,14 +111,14 @@ function ColorPicker({
       >
         {currentColor ? (
           <span
-            className="h-2.5 w-2.5 rounded-full border shadow-inner"
+            className={`${compact ? 'h-2 w-2' : 'h-2.5 w-2.5'} rounded-full border shadow-inner`}
             style={{
               backgroundColor: currentColor,
               borderColor: iconColor === '#FFFFFF' ? 'rgba(255,255,255,0.78)' : 'rgba(5,14,60,0.45)',
             }}
           />
         ) : (
-          <Palette className="h-3 w-3" />
+          <Palette className={compact ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
         )}
       </button>
 
@@ -153,7 +156,7 @@ function ColorPicker({
   );
 }
 
-export function KanbanCard({ lead, onClickLead, availableColors = [], assigneeName }: KanbanCardProps) {
+export function KanbanCard({ lead, onClickLead, availableColors = [], assigneeName, fitToWindow = false }: KanbanCardProps) {
   const [showPopover, setShowPopover] = useState(false);
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
   const hoverTimeout = useRef<ReturnType<typeof setTimeout>>(null);
@@ -186,6 +189,7 @@ export function KanbanCard({ lead, onClickLead, availableColors = [], assigneeNa
     color: textColor === '#FFFFFF' ? '#050E3C' : '#FFFFFF',
   } : undefined;
   const intelligence = useMemo(() => computeLeadIntelligence(lead), [lead]);
+  const assigneeLabel = assigneeName || (lead.assigned_to ? 'Assigned' : 'Unassigned');
 
   // Reposition popover after it renders to prevent viewport overflow
   useEffect(() => {
@@ -247,7 +251,7 @@ export function KanbanCard({ lead, onClickLead, availableColors = [], assigneeNa
           ...(cardColor ? { backgroundColor: cardColor, color: textColor } : {}),
         }}
         onClick={handleCardClick}
-        className={`cursor-pointer rounded-[1.1rem] border p-2.5 shadow-sm transition-all backdrop-blur-xl ${
+        className={`cursor-pointer border shadow-sm transition-all backdrop-blur-xl ${
           cardColor
             ? `border-black/8 shadow-[0_14px_34px_rgba(18,39,33,0.1)] ${isDragging ? 'scale-105 shadow-2xl' : 'hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(18,39,33,0.14)]'}`
             : `mn-kanban-card ${
@@ -255,51 +259,92 @@ export function KanbanCard({ lead, onClickLead, availableColors = [], assigneeNa
                   ? 'scale-105 border-mn-h2/50 shadow-2xl shadow-mn-h2/20'
                   : 'hover:-translate-y-0.5 hover:border-mn-input-focus/45 hover:shadow-[0_18px_40px_rgba(18,39,33,0.12)]'
               }`
-        }`}
+        } ${fitToWindow ? 'rounded-[0.95rem] p-2' : 'rounded-[1.1rem] p-2.5'}`}
       >
-        <div className="space-y-2.5">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-1">
+        {fitToWindow ? (
+          <div className="space-y-1.5">
+            <div className="flex min-w-0 items-center gap-1.5">
               <div
                 data-drag-handle
                 {...attributes}
                 {...listeners}
-                className="flex h-5 w-4 cursor-grab items-center justify-center rounded-full active:cursor-grabbing"
+                className="flex h-4 w-3 cursor-grab items-center justify-center rounded-full active:cursor-grabbing"
                 style={{ color: mutedTextColor || undefined }}
                 title="Drag lead"
               >
-                <GripVertical className={`h-3.5 w-3.5 ${!cardColor ? 'text-mn-text-muted/45 hover:text-mn-text-muted' : 'opacity-55 hover:opacity-80'}`} />
+                <GripVertical className={`h-3 w-3 ${!cardColor ? 'text-mn-text-muted/45 hover:text-mn-text-muted' : 'opacity-55 hover:opacity-80'}`} />
               </div>
               {availableColors.length > 0 && (
-                <ColorPicker leadId={lead.id} currentColor={cardColor || undefined} colors={availableColors} />
+                <ColorPicker leadId={lead.id} currentColor={cardColor || undefined} colors={availableColors} compact />
               )}
+              <h4 className={`min-w-0 flex-1 truncate text-[12px] font-black leading-tight tracking-tight ${!cardColor ? 'text-mn-text' : ''}`}>
+                {raw.lead_name}
+              </h4>
+              <span
+                className="flex h-5 min-w-[35px] flex-shrink-0 items-center justify-center gap-0.5 rounded-full border border-mn-h2/12 bg-mn-card/90 px-1.5 text-[8.5px] font-black leading-none text-mn-h1 shadow-sm"
+                title={`${intelligence.temperature}: ${intelligence.nextBestAction}`}
+                style={aiPillStyle}
+              >
+                <Sparkles className="h-2 w-2" />
+                <span>AI</span>
+                <span>{intelligence.score}</span>
+              </span>
             </div>
-            <span
-              className="flex min-w-[38px] items-center justify-center gap-1 rounded-full border border-mn-h2/12 bg-mn-card/90 px-1.5 py-0.5 text-[9px] font-black leading-none text-mn-h1 shadow-sm"
-              title={`${intelligence.temperature}: ${intelligence.nextBestAction}`}
-              style={aiPillStyle}
-            >
-              <Sparkles className="h-2.5 w-2.5" />
-              <span>AI</span>
-              <span>{intelligence.score}</span>
-            </span>
-          </div>
-          <h4 className={`min-w-0 truncate text-[14px] font-black leading-tight tracking-tight ${!cardColor ? 'text-mn-text' : ''}`}>
-            {raw.lead_name}
-          </h4>
-          <div className="space-y-1.5 text-[11px] font-semibold leading-tight" style={{ color: mutedTextColor }}>
-            <div className="flex min-w-0 items-center gap-1.5">
-              <Phone className={`h-3.5 w-3.5 flex-shrink-0 ${!cardColor ? 'text-mn-text-muted' : ''}`} />
-              <span className={`min-w-0 truncate ${!cardColor ? 'text-mn-text-muted' : ''}`}>{raw.phone || 'Phone pending'}</span>
-            </div>
-            <div className="flex min-w-0 items-center gap-1.5">
-              <UserRound className={`h-3.5 w-3.5 flex-shrink-0 ${!cardColor ? 'text-mn-text-muted' : ''}`} />
-              <span className={`min-w-0 truncate ${!cardColor ? 'text-mn-text-muted' : ''}`}>
-                {assigneeName || (lead.assigned_to ? 'Assigned' : 'Unassigned')}
+            <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold leading-tight" style={{ color: mutedTextColor }}>
+              <span className={`min-w-0 flex-1 truncate ${!cardColor ? 'text-mn-text-muted' : ''}`}>
+                {raw.phone || 'Phone pending'}
+              </span>
+              <span className="h-1 w-1 flex-shrink-0 rounded-full opacity-55" style={{ backgroundColor: mutedTextColor || 'currentColor' }} />
+              <span className={`min-w-0 flex-1 truncate text-right ${!cardColor ? 'text-mn-text-muted' : ''}`}>
+                {assigneeLabel}
               </span>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-1">
+                <div
+                  data-drag-handle
+                  {...attributes}
+                  {...listeners}
+                  className="flex h-5 w-4 cursor-grab items-center justify-center rounded-full active:cursor-grabbing"
+                  style={{ color: mutedTextColor || undefined }}
+                  title="Drag lead"
+                >
+                  <GripVertical className={`h-3.5 w-3.5 ${!cardColor ? 'text-mn-text-muted/45 hover:text-mn-text-muted' : 'opacity-55 hover:opacity-80'}`} />
+                </div>
+                {availableColors.length > 0 && (
+                  <ColorPicker leadId={lead.id} currentColor={cardColor || undefined} colors={availableColors} />
+                )}
+              </div>
+              <span
+                className="flex min-w-[38px] items-center justify-center gap-1 rounded-full border border-mn-h2/12 bg-mn-card/90 px-1.5 py-0.5 text-[9px] font-black leading-none text-mn-h1 shadow-sm"
+                title={`${intelligence.temperature}: ${intelligence.nextBestAction}`}
+                style={aiPillStyle}
+              >
+                <Sparkles className="h-2.5 w-2.5" />
+                <span>AI</span>
+                <span>{intelligence.score}</span>
+              </span>
+            </div>
+            <h4 className={`min-w-0 truncate text-[14px] font-black leading-tight tracking-tight ${!cardColor ? 'text-mn-text' : ''}`}>
+              {raw.lead_name}
+            </h4>
+            <div className="space-y-1.5 text-[11px] font-semibold leading-tight" style={{ color: mutedTextColor }}>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <Phone className={`h-3.5 w-3.5 flex-shrink-0 ${!cardColor ? 'text-mn-text-muted' : ''}`} />
+                <span className={`min-w-0 truncate ${!cardColor ? 'text-mn-text-muted' : ''}`}>{raw.phone || 'Phone pending'}</span>
+              </div>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <UserRound className={`h-3.5 w-3.5 flex-shrink-0 ${!cardColor ? 'text-mn-text-muted' : ''}`} />
+                <span className={`min-w-0 truncate ${!cardColor ? 'text-mn-text-muted' : ''}`}>
+                  {assigneeLabel}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Popover on hover — rendered via portal to escape overflow clipping */}
