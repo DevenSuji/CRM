@@ -755,6 +755,37 @@ The CRM is close to production-pilot readiness, so this workstream must be slowe
 - Live smoke:
   - `PLAYWRIGHT_BASE_URL=https://elite-build-crm-dev-zrpcw3j22q-el.a.run.app npm run test:smoke` passed: 2 Chromium tests.
 
+### 2026-05-02 18:55 IST - LINT-001 Location Autocomplete Typing
+
+- Action: Added minimal local Google Maps Places interfaces for `LocationAutocomplete` and removed the three `any` annotations around `window.google`, `_onGoogleMapsLoaded`, and the autocomplete ref.
+- Reason: Remove `@typescript-eslint/no-explicit-any` warnings without adding a new dependency or changing the Google Places script loading/autocomplete behavior.
+- Evidence collected:
+  - `npm run lint -- components/ui/LocationAutocomplete.tsx` reported `no-explicit-any` warnings at `components/ui/LocationAutocomplete.tsx:16`, `:49`, and `:78`.
+  - The repo does not currently include `@types/google.maps` or `@googlemaps/js-api-loader`.
+  - The component only uses `google.maps.places.Autocomplete`, `addListener('place_changed', ...)`, and `getPlace()` fields `formatted_address` and `name`.
+  - The component is a client component and already uses browser APIs inside effects/event handlers.
+- Files changed:
+  - `CRM/elite-build-dashboard/components/ui/LocationAutocomplete.tsx`
+  - `tech_debt_remediation.md`
+- Runtime impact:
+  - Low. Script URL, callback name, autocomplete options, paste behavior, and URL resolution flow are unchanged.
+- Validation:
+  - `npm run lint -- components/ui/LocationAutocomplete.tsx` passed with no warnings.
+  - `npx tsc --noEmit` passed.
+  - `git diff --check -- CRM/elite-build-dashboard/components/ui/LocationAutocomplete.tsx tech_debt_remediation.md` passed.
+  - `npm run test` passed: 26 unit test files, 463 tests.
+  - `npm run lint` passed with 31 warnings and 0 errors.
+  - `npm run test:rules` passed: 9 rules test files, 328 tests.
+  - `npm run test:smoke` passed locally: 2 Chromium smoke tests.
+- Commit:
+  - Pending.
+- Push:
+  - Pending.
+- Dev deploy:
+  - Pending.
+- Live smoke:
+  - Pending.
+
 ## Findings Register
 
 ### GEN-001 - Python Bytecode Cache In Source Tree

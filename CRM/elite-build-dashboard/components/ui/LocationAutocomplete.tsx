@@ -11,11 +11,39 @@ interface LocationAutocompleteProps {
   required?: boolean;
 }
 
+type GooglePlaceResult = {
+  formatted_address?: string;
+  name?: string;
+};
+
+type GoogleMapsAutocomplete = {
+  addListener: (eventName: 'place_changed', handler: () => void) => void;
+  getPlace: () => GooglePlaceResult | undefined;
+};
+
+type GoogleMapsPlacesLibrary = {
+  Autocomplete: new (
+    input: HTMLInputElement,
+    options: {
+      types: string[];
+      componentRestrictions: { country: string };
+      fields: string[];
+    },
+  ) => GoogleMapsAutocomplete;
+};
+
+type GoogleMapsGlobal = {
+  maps?: {
+    places?: GoogleMapsPlacesLibrary;
+  };
+};
+
 declare global {
   interface Window {
-    google?: any;
+    google?: GoogleMapsGlobal;
     _googleMapsLoaded?: boolean;
     _googleMapsCallbacks?: (() => void)[];
+    _onGoogleMapsLoaded?: () => void;
   }
 }
 
@@ -46,7 +74,7 @@ function loadGoogleMaps(): Promise<void> {
     script.async = true;
     script.defer = true;
 
-    (window as any)._onGoogleMapsLoaded = () => {
+    window._onGoogleMapsLoaded = () => {
       window._googleMapsLoaded = true;
       window._googleMapsCallbacks?.forEach(cb => cb());
       window._googleMapsCallbacks = [];
@@ -75,7 +103,7 @@ export function LocationAutocomplete({
   required,
 }: LocationAutocompleteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<any>(null);
+  const autocompleteRef = useRef<GoogleMapsAutocomplete | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [resolving, setResolving] = useState(false);
 
@@ -86,10 +114,11 @@ export function LocationAutocomplete({
   }, []);
 
   useEffect(() => {
-    if (!loaded || !inputRef.current || !window.google?.maps?.places) return;
+    const places = window.google?.maps?.places;
+    if (!loaded || !inputRef.current || !places) return;
     if (autocompleteRef.current) return; // Already initialized
 
-    const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
+    const autocomplete = new places.Autocomplete(inputRef.current, {
       types: ['(regions)'],
       componentRestrictions: { country: 'in' },
       fields: ['formatted_address', 'name', 'geometry'],
