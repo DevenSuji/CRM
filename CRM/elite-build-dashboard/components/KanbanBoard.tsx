@@ -248,7 +248,7 @@ export function KanbanBoard({
         onDragEnd={handleDragEnd}
       >
         <div className="mn-board-shell relative h-full overflow-hidden rounded-[2rem]">
-          <div className={`relative z-10 flex h-full gap-4 overflow-y-hidden p-4 ${fitToWindow ? 'overflow-x-hidden' : 'overflow-x-auto'}`}>
+          <div className={`relative z-10 flex h-full overflow-y-hidden ${fitToWindow ? 'gap-2 overflow-x-hidden p-3' : 'gap-4 overflow-x-auto p-4'}`}>
             {sortedLanes.map((lane, idx) => (
               <KanbanLane
                 key={lane.id}
